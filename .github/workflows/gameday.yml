@@ -1,0 +1,54 @@
+name: Gameday refresh
+
+# Netlify's scheduler floors at hourly, which is too slow for pre-kickoff
+# inactive news — the window that matters most is the 90 minutes before each
+# kickoff. GitHub Actions cron gives sub-hourly polling for free.
+#
+# Times are UTC. US Eastern is UTC-4 during the NFL season (EDT).
+on:
+  schedule:
+    # Sunday 11:00-23:50 UTC (7am-7:50pm ET) — every 15 min around kickoffs
+    - cron: '*/15 11-23 * * 0'
+    # Sunday night into Monday (8pm ET Sun - 1am ET Mon)
+    - cron: '*/20 0-5 * * 1'
+    # Thursday night football
+    - cron: '*/20 23 * * 4'
+    - cron: '*/20 0-4 * * 5'
+    # Monday night football
+    - cron: '*/20 23 * * 1'
+    - cron: '*/20 0-4 * * 2'
+  workflow_dispatch:
+
+concurrency:
+  group: gameday-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger gameday refresh
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::SITE_URL and CRON_SECRET repo secrets must both be set"
+            exit 1
+          fi
+
+          response=$(mktemp)
+          status=$(curl -sS -o "$response" -w '%{http_code}' \
+            --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/gameday")
+
+          echo "HTTP $status"
+          cat "$response"
+          echo
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Gameday refresh failed with HTTP $status"
+            exit 1
+          fi

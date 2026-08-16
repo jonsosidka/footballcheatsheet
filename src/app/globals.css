@@ -1,0 +1,150 @@
+@import 'tailwindcss';
+
+/*
+ * "Terminal Sharp" — the visual thesis is that this is an edge-hunting tool,
+ * not a scoreboard. Near-black ground, tight rules, monospaced numerics so
+ * columns of points align optically, and one electric accent reserved almost
+ * entirely for market movement. Editorial serif against terminal mono.
+ */
+
+@theme {
+  --color-ink: #08090b;
+  --color-ink-raised: #0e1013;
+  --color-ink-card: #121418;
+  --color-ink-hover: #171a1f;
+
+  --color-rule: #1e2228;
+  --color-rule-bright: #2b3038;
+
+  --color-text: #e8eaed;
+  --color-text-dim: #9aa1ab;
+  --color-text-faint: #5f6772;
+
+  /* Electric lime: market-up, and the primary accent. Used sparingly. */
+  --color-signal: #c9f24d;
+  --color-signal-dim: #7f9a2e;
+  /* Warm coral: market-down. */
+  --color-fade: #ff6b5a;
+  --color-fade-dim: #a8433a;
+
+  --color-warn: #ffb340;
+  --color-crit: #ff4d6a;
+
+  --font-display: var(--font-instrument), Georgia, serif;
+  --font-body: var(--font-archivo), sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Atmosphere: a faint vertical gradient plus fine grain so large dark
+ * surfaces don't read as flat black.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201, 242, 77, 0.045), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(255, 107, 90, 0.025), transparent 70%);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Tabular numerals everywhere numbers are compared down a column. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.rule-top {
+  border-top: 1px solid var(--color-rule);
+}
+
+/* Hairline grid used on panel headers. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-rule) 0px,
+    var(--color-rule) 1px,
+    transparent 1px,
+    transparent 6px
+  );
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sweep {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.sweep {
+  transform-origin: left;
+  animation: sweep 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .sweep {
+    animation: none;
+  }
+}
+
+::selection {
+  background: var(--color-signal);
+  color: var(--color-ink);
+}
+
+/* Scrollbars that don't break the dark surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-rule-bright) transparent;
+}

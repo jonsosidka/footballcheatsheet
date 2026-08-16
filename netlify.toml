@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# The Next.js runtime handles routing, SSR and the /api/cron/* endpoints.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Cron endpoints write to the database and call upstream APIs. They are guarded
+# by CRON_SECRET in the route handler, but keeping them out of search indexes
+# costs nothing.
+[[headers]]
+  for = "/api/cron/*"
+  [headers.values]
+    X-Robots-Tag = "noindex"
