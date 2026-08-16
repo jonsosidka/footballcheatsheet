@@ -68,6 +68,15 @@ export default async function WaiversPage({
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 mb-5 pb-5 border-b border-rule">
           <Bit label="Posture" value={view.posture} tone="signal" />
           <Bit label="Open roster spots" value={String(view.openSlots)} />
+          {view.waiverSystem === 'faab' ? (
+            <Bit
+              label="FAAB remaining"
+              value={`$${view.faabRemaining ?? 0} / $${view.faabTotal ?? 0}`}
+              tone="signal"
+            />
+          ) : (
+            <Bit label="Waiver position" value={view.waiverPosition ? `#${view.waiverPosition}` : '—'} />
+          )}
           <Bit label="Free agents scanned" value={view.freeAgentCount.toLocaleString()} />
           <p className="text-[11px] text-text-faint max-w-md leading-relaxed ml-auto">
             {view.isDynasty
@@ -118,10 +127,39 @@ export default async function WaiversPage({
                         </div>
 
                         <p className="text-[11.5px] text-text-faint leading-relaxed">{s.rationale}</p>
+                        {s.bid && s.bid.amount > 0 ? (
+                          <p className="text-[10.5px] text-signal-dim mt-1">{s.bid.rationale}</p>
+                        ) : null}
+                        {s.priority ? (
+                          <p className="text-[10.5px] text-text-faint mt-1">{s.priority.rationale}</p>
+                        ) : null}
                       </div>
 
-                      <div className="shrink-0 text-right w-[128px]">
+                      <div className="shrink-0 text-right w-[142px] space-y-1.5">
                         <DualBar winNow={s.score.winNowDelta} future={s.score.futureDelta} isDynasty={view.isDynasty} />
+                        {s.bid && s.bid.amount > 0 ? (
+                          <div className="flex items-baseline justify-end gap-1.5">
+                            <span className="eyebrow">bid</span>
+                            <span className="num text-[13px] text-signal">
+                              ${s.bid.low}–{s.bid.high}
+                            </span>
+                          </div>
+                        ) : null}
+                        {s.priority ? (
+                          <div className="flex items-center justify-end">
+                            <span
+                              className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
+                              style={{
+                                color: s.priority.worthBurning ? 'var(--color-signal)' : 'var(--color-text-faint)',
+                                borderColor: s.priority.worthBurning
+                                  ? 'rgba(201,242,77,0.3)'
+                                  : 'var(--color-rule-bright)',
+                              }}
+                            >
+                              {s.priority.worthBurning ? 'CLAIM' : 'WAIT'}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </li>
@@ -146,6 +184,48 @@ export default async function WaiversPage({
                       <span className="num text-[11px] ml-auto text-signal-dim">
                         +{s.score.winNowDelta.toFixed(1)}
                       </span>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            ) : null}
+
+            {view.byeGaps.length > 0 ? (
+              <Panel title="Bye-week gaps" meta={`through wk ${view.lastRegularWeek}`} accent>
+                <p className="px-4 pt-3 text-[11px] text-text-faint leading-relaxed">
+                  Weeks where byes leave you unable to field a full lineup. Solve these early — the wire is picked
+                  over by the time everyone notices.
+                </p>
+                <ul className="pt-1">
+                  {view.byeGaps.slice(0, 6).map((g, i) => (
+                    <li key={`${g.week}-${g.position}-${i}`} className="px-4 py-2.5 border-b border-rule/60 last:border-0">
+                      <div className="flex items-center gap-2.5 mb-1">
+                        <span
+                          className="num text-[10px] px-1.5 py-0.5 border tracking-wider"
+                          style={{
+                            color: g.severity === 'critical' ? 'var(--color-crit)' : 'var(--color-warn)',
+                            borderColor:
+                              g.severity === 'critical' ? 'rgba(255,77,106,0.3)' : 'rgba(255,179,64,0.3)',
+                          }}
+                        >
+                          WK {g.week}
+                        </span>
+                        <PositionTag position={g.position} />
+                        <span className="num text-[10px] text-text-faint">
+                          need {g.required}, have {g.available}
+                        </span>
+                        <span
+                          className="num text-[11px] ml-auto"
+                          style={{ color: g.severity === 'critical' ? 'var(--color-crit)' : 'var(--color-warn)' }}
+                        >
+                          −{g.shortBy}
+                        </span>
+                      </div>
+                      {g.onBye.length > 0 ? (
+                        <div className="text-[10.5px] text-text-faint truncate">
+                          out: {g.onBye.slice(0, 4).map((x) => x.name).join(', ')}
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

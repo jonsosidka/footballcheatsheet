@@ -8,7 +8,7 @@ import {
   pickValues,
   syncState,
 } from '@/db/schema';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import {
   getAllPlayers,
   getWeeklyProjections,
@@ -17,6 +17,7 @@ import {
 } from '@/lib/sources/sleeper';
 import { getWeekGameLines, SEASON_TYPE } from '@/lib/sources/espn-odds';
 import { getValues, shapeKey, type LeagueShape } from '@/lib/sources/fantasycalc';
+import { getSchedule, deriveByeWeeks } from '@/lib/sources/nflverse';
 
 /**
  * Sync jobs for the shared (non-league-specific) data.
@@ -297,6 +298,32 @@ export async function syncMarketValues(shape: LeagueShape): Promise<number> {
 
   await markSynced(`values:${key}`, `${valueRows.length} players, ${picks.length} picks`);
   return valueRows.length;
+}
+
+/**
+ * Populate bye weeks from the nflverse schedule.
+ *
+ * Sleeper's player dump has no bye week at all, and deriving it from ESPN would
+ * cost hundreds of requests. One CSV gives the whole season, from which a bye
+ * is simply "team absent from a week".
+ *
+ * Runs daily; the schedule barely changes but flexed games do move.
+ */
+export async function syncByeWeeks(season: number): Promise<number> {
+  const games = await getSchedule(season);
+  const byes = deriveByeWeeks(games);
+
+  if (byes.size === 0) {
+    await markSynced('byes', 'schedule unavailable — byes left unchanged');
+    return 0;
+  }
+
+  for (const [team, week] of byes) {
+    await db.update(players).set({ byeWeek: week }).where(eq(players.team, team));
+  }
+
+  await markSynced('byes', `${byes.size} teams`);
+  return byes.size;
 }
 
 export async function markSynced(key: string, detail?: string): Promise<void> {

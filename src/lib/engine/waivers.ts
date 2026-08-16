@@ -1,4 +1,5 @@
 import { scoreMove, adjustedDynastyValue, type AssetValue, type DualScore, type Posture, type Trajectory } from './value';
+import { coversByeGaps, type ByeGap } from './byes';
 
 /**
  * Waiver-wire add/drop recommendations.
@@ -50,6 +51,8 @@ export interface WaiverSuggestion {
   rationale: string;
   /** Roster is full and nothing on it is worth cutting — a trade target, not a claim. */
   blocked: boolean;
+  /** Upcoming bye weeks this player would cover. */
+  coversByeWeeks: number[];
 }
 
 const IDP_POSITIONS = ['DL', 'DE', 'DT', 'LB', 'DB', 'CB', 'S'];
@@ -161,6 +164,10 @@ export interface WaiverInput {
   isDynasty: boolean;
   /** Whether the roster is getting younger or older relative to the league. */
   trajectory?: Trajectory;
+  /** Upcoming weeks where byes leave the lineup short. */
+  byeGaps?: ByeGap[];
+  /** team -> bye week. */
+  byeWeeks?: Map<string, number>;
   /** Open active roster spots; 0 means every add requires a drop. */
   openSlots: number;
   limit?: number;
@@ -176,6 +183,8 @@ export interface WaiverInput {
 export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
   const { freeAgents, myRoster, rosterPositions, posture, isDynasty, openSlots } = input;
   const trajectory = input.trajectory ?? 'stable';
+  const byeGaps = input.byeGaps ?? [];
+  const byeWeeks = input.byeWeeks ?? new Map<string, number>();
   const limit = input.limit ?? 12;
 
   const needs = computeNeeds(rosterPositions, myRoster, freeAgents);
@@ -197,7 +206,12 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
     }))
     .sort((a, b) => a.rank - b.rank);
 
-  const scored: Array<{ suggestion: Omit<WaiverSuggestion, 'drop' | 'rationale' | 'blocked'>; need: PositionalNeed; overIncumbent: number }> = [];
+  const scored: Array<{
+    suggestion: Omit<WaiverSuggestion, 'drop' | 'rationale' | 'blocked' | 'coversByeWeeks'>;
+    need: PositionalNeed;
+    overIncumbent: number;
+    coversByeWeeks: number[];
+  }> = [];
 
   for (const candidate of freeAgents) {
     const group = needGroupOf(candidate.position, rosterPositions);
@@ -213,7 +227,14 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
     const isAssetGrab = isDynasty && (candidate.dynastyValue ?? 0) > 500;
     if (!isUpgrade && !isAssetGrab) continue;
 
+    const coversByeWeeks = coversByeGaps(
+      { position: candidate.position, team: candidate.team },
+      byeGaps,
+      byeWeeks,
+    );
+
     scored.push({
+      coversByeWeeks,
       suggestion: {
         add: candidate,
         vor: round2(vor),
@@ -232,14 +253,21 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
     });
   }
 
-  const ranked = scored
-    .sort((a, b) => {
-      // Weight by positional need so an equal-value add at a thin position wins.
-      const aRank = a.suggestion.score.combined * (0.7 + 0.6 * a.suggestion.needScore);
-      const bRank = b.suggestion.score.combined * (0.7 + 0.6 * b.suggestion.needScore);
-      return bRank - aRank;
-    })
-    .slice(0, limit);
+  /*
+   * Ranking folds in three multipliers beyond raw value:
+   *   need      — an equal-value add at a thin position is worth more
+   *   bye       — solving a week you literally cannot field a lineup is worth
+   *               more than a marginal points upgrade
+   *   urgency   — heavy community adds mean he won't be there tomorrow
+   */
+  const rankOf = (entry: (typeof scored)[number]) => {
+    const need = 0.7 + 0.6 * entry.suggestion.needScore;
+    const bye = 1 + Math.min(0.5, entry.coversByeWeeks.length * 0.25);
+    const urgency = entry.suggestion.add.trendingAdds > 20_000 ? 1.1 : 1;
+    return entry.suggestion.score.combined * need * bye * urgency;
+  };
+
+  const ranked = scored.sort((a, b) => rankOf(b) - rankOf(a)).slice(0, limit);
 
   /*
    * Assign a DISTINCT drop to each suggestion, worst player first.
@@ -257,7 +285,7 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
    */
   const used = new Set<string>();
 
-  return ranked.map(({ suggestion, need, overIncumbent }) => {
+  return ranked.map(({ suggestion, need, overIncumbent, coversByeWeeks }) => {
     let drop: WaiverCandidate | null = null;
 
     if (openSlots <= 0) {
@@ -302,7 +330,17 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
       drop,
       score,
       blocked: openSlots <= 0 && drop === null,
-      rationale: buildRationale(suggestion.add, drop, need, overIncumbent, posture, isDynasty, openSlots > 0),
+      coversByeWeeks,
+      rationale: buildRationale(
+        suggestion.add,
+        drop,
+        need,
+        overIncumbent,
+        posture,
+        isDynasty,
+        openSlots > 0,
+        coversByeWeeks,
+      ),
     };
   });
 }
@@ -342,6 +380,7 @@ function buildRationale(
   posture: Posture,
   isDynasty: boolean,
   openRosterSpot: boolean,
+  coversByeWeeks: number[] = [],
 ): string {
   const parts: string[] = [];
 
@@ -354,6 +393,13 @@ function buildRationale(
     );
   } else if (isDynasty) {
     parts.push(`Not a starter now, but a real long-term asset at ${add.age ?? '?'}.`);
+  }
+
+  if (coversByeWeeks.length > 0) {
+    const weeks = coversByeWeeks.slice(0, 3).join(', ');
+    parts.push(
+      `Covers your week ${weeks} bye ${coversByeWeeks.length > 1 ? 'gaps' : 'gap'} — you are short a starter there.`,
+    );
   }
 
   if (need.needScore > 0.5) {

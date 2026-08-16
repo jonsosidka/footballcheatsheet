@@ -9,6 +9,8 @@ import { computeOccupancy } from '@/lib/engine/roster';
 import { rankWaiverTargets, computeNeeds, partitionSuggestions, type WaiverCandidate, type WaiverSuggestion, type PositionalNeed } from '@/lib/engine/waivers';
 import { shapeFromLeague, shapeKey } from '@/lib/sources/fantasycalc';
 import { getTrending } from '@/lib/sources/sleeper';
+import { findByeGaps, type ByeGap, type ByeRosterPlayer } from '@/lib/engine/byes';
+import { waiverSystem, recommendBid, evaluatePriorityClaim, type WaiverSystem, type BidRecommendation, type PriorityAdvice } from '@/lib/engine/faab';
 
 export interface WaiverView {
   leagueId: string;
@@ -20,8 +22,14 @@ export interface WaiverView {
   confidence: string;
   postureReasoning: string;
   openSlots: number;
-  suggestions: WaiverSuggestion[];
+  suggestions: Array<WaiverSuggestion & { bid: BidRecommendation | null; priority: PriorityAdvice | null }>;
   blocked: WaiverSuggestion[];
+  byeGaps: ByeGap[];
+  waiverSystem: WaiverSystem;
+  faabRemaining: number | null;
+  faabTotal: number | null;
+  waiverPosition: number | null;
+  lastRegularWeek: number;
   needs: PositionalNeed[];
   freeAgentCount: number;
   lastSyncedAt: Date | null;
@@ -155,6 +163,12 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
 
   const strengths = allRosters.map((r) => ({ rosterId: r.rosterId, strength: strengthOf(r) }));
 
+  // Read these from the league rather than assuming: playoff_week_start 15
+  // means the fantasy regular season ends at week 14.
+  const leagueSettings = (league.settings ?? {}) as Record<string, number>;
+  const lastRegularWeek = Math.max(1, (leagueSettings.playoff_week_start ?? 15) - 1);
+  const playoffTeams = leagueSettings.playoff_teams ?? 6;
+
   const avgTopAge = (ids: string[]): number | null => {
     const aged = ids
       .map((id) => ({ age: playerById.get(id)?.age ?? null, value: valueById.get(id)?.dynastyValue ?? 0 }))
@@ -171,8 +185,8 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     wins: mine.settings?.wins ?? 0,
     losses: mine.settings?.losses ?? 0,
     ties: mine.settings?.ties ?? 0,
-    weeksRemaining: Math.max(0, 14 - week),
-    playoffTeams: 6,
+    weeksRemaining: Math.max(0, lastRegularWeek - week),
+    playoffTeams,
     totalTeams: league.totalRosters,
     isDynasty: league.isDynasty,
     myAvgAge: avgTopAge(mine.players ?? []),
@@ -191,6 +205,27 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     { players: mine.players ?? [], taxi: mine.taxi ?? [], reserve: mine.reserve ?? [] },
   );
 
+  const byeWeeks = new Map<string, number>();
+  for (const player of allPlayers) {
+    if (player.team && player.byeWeek) byeWeeks.set(player.team, player.byeWeek);
+  }
+
+  const byeRoster: ByeRosterPlayer[] = myRoster.map((c) => ({
+    playerId: c.playerId,
+    name: c.name,
+    position: c.position,
+    team: c.team,
+    rosPoints: c.rosPoints,
+  }));
+
+  const byeGaps = findByeGaps({
+    rosterPositions: league.rosterPositions,
+    roster: byeRoster,
+    byeWeeks,
+    currentWeek: week,
+    lastRegularWeek,
+  });
+
   const suggestions = rankWaiverTargets({
     rosterPositions: league.rosterPositions,
     freeAgents,
@@ -198,11 +233,46 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     posture: posture.posture,
     isDynasty: league.isDynasty,
     trajectory: posture.trajectory,
+    byeGaps,
+    byeWeeks,
     openSlots: Math.max(0, occupancy.openActiveSlots),
     limit: 24,
   });
 
   const { actionable, blocked } = partitionSuggestions(suggestions);
+
+  const system = waiverSystem(leagueSettings.waiver_type);
+  const faabTotal = leagueSettings.waiver_budget ?? null;
+  const faabUsed = mine.settings?.waiver_budget_used ?? 0;
+  const waiverPosition = mine.settings?.waiver_position ?? null;
+  const topAvailablePoints = Math.max(...freeAgents.map((f) => f.rosPoints), 1);
+  const weeksRemaining = Math.max(0, lastRegularWeek - week);
+
+  const withAcquisition = actionable.slice(0, 12).map((s) => ({
+    ...s,
+    bid:
+      system === 'faab' && faabTotal !== null
+        ? recommendBid({
+            winNowDelta: s.score.winNowDelta,
+            topAvailablePoints,
+            budgetTotal: faabTotal,
+            budgetUsed: faabUsed,
+            weeksRemaining,
+            trendingAdds: s.add.trendingAdds,
+            coversBye: s.coversByeWeeks.length > 0,
+          })
+        : null,
+    priority:
+      system === 'faab'
+        ? null
+        : evaluatePriorityClaim({
+            winNowDelta: s.score.winNowDelta,
+            waiverPosition,
+            totalTeams: league.totalRosters,
+            coversBye: s.coversByeWeeks.length > 0,
+            system,
+          }),
+  }));
 
   const needs = [...computeNeeds(league.rosterPositions, myRoster, freeAgents).values()].sort(
     (a, b) => b.needScore - a.needScore,
@@ -218,10 +288,16 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     confidence: posture.confidence,
     postureReasoning: posture.reasoning,
     openSlots: Math.max(0, occupancy.openActiveSlots),
-    suggestions: actionable.slice(0, 12),
+    suggestions: withAcquisition,
     blocked: blocked.slice(0, 6),
     needs,
     freeAgentCount: freeAgents.length,
+    byeGaps,
+    waiverSystem: system,
+    faabRemaining: faabTotal !== null ? Math.max(0, faabTotal - faabUsed) : null,
+    faabTotal,
+    waiverPosition,
+    lastRegularWeek,
     lastSyncedAt,
   };
 }

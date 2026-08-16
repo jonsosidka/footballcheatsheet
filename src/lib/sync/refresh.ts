@@ -2,7 +2,7 @@ import { db } from '@/db';
 import { alerts, projSnapshots, leagues, myTeams } from '@/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getState, requiredProjectionPositions } from '@/lib/sources/sleeper';
-import { syncWeeklyProjections, syncGameOdds, syncPlayers, syncSeasonProjections, syncMarketValues, markSynced } from './data';
+import { syncWeeklyProjections, syncGameOdds, syncPlayers, syncSeasonProjections, syncMarketValues, syncByeWeeks, markSynced } from './data';
 import { syncLeagueMembers } from './league';
 import { getDashboard, listLeagues } from '@/lib/data/dashboard';
 import { getWaiverView } from '@/lib/data/waivers';
@@ -68,6 +68,8 @@ export async function runDaily(): Promise<RefreshResult> {
   const season = state.league_season;
 
   const playerCount = await syncPlayers();
+  // After players, so the team column is fresh before byes are stamped on.
+  const byeTeams = await syncByeWeeks(Number(season)).catch(() => 0);
 
   const leagueRows = await db.select().from(leagues);
   const positions = requiredProjectionPositions(leagueRows.map((l) => l.rosterPositions));
@@ -91,7 +93,7 @@ export async function runDaily(): Promise<RefreshResult> {
   return {
     job: 'daily',
     ms: Date.now() - started,
-    detail: { playerCount, seasonCount, valueCount, shapes: shapes.size },
+    detail: { playerCount, byeTeams, seasonCount, valueCount, shapes: shapes.size },
   };
 }
 
