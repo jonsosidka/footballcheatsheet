@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getDashboard, listLeagues, type DashboardPlayer } from '@/lib/data/dashboard';
-import { Panel, MarketShift, PositionTag, InjuryTag, Stat } from '@/components/primitives';
+import { Panel, PositionTag, InjuryTag, Stat } from '@/components/primitives';
 import { ordinal } from '@/lib/engine/value';
 import { RefreshButton } from '@/components/RefreshButton';
 import { Nav } from '@/components/Nav';
@@ -129,11 +129,7 @@ export default async function DashboardPage({
               <Panel
                 title="Optimal lineup"
                 accent
-                meta={
-                  <span>
-                    base <span className="text-text-faint">→</span> market shift
-                  </span>
-                }
+                meta={<span>game environment</span>}
               >
                 <table className="w-full">
                   <tbody>
@@ -167,8 +163,17 @@ export default async function DashboardPage({
                             </span>
                           ) : null}
                         </td>
-                        <td className="py-2 w-[92px] text-right pr-1">
-                          <MarketShift delta={slot.player?.marketDelta ?? null} />
+                        <td className="py-2 w-[112px] text-right pr-1">
+                          {slot.player?.impliedTeamPoints != null ? (
+                            <span className="num text-[10px] text-text-faint">
+                              {slot.player.impliedTeamPoints.toFixed(1)} implied
+                              {slot.player.spread != null
+                                ? ` · ${slot.player.spread < 0 ? '−' : '+'}${Math.abs(slot.player.spread)}`
+                                : ''}
+                            </span>
+                          ) : (
+                            <span className="num text-[10px] text-text-faint">—</span>
+                          )}
                         </td>
                         <td className="py-2 pr-4 w-[64px] text-right">
                           <span className="num text-[15px]">{slot.player?.points.toFixed(1) ?? '—'}</span>
@@ -220,7 +225,11 @@ export default async function DashboardPage({
 
             {/* ---------------- right column ---------------- */}
             <div className="space-y-4">
-              <Panel title="Market movers" meta="DraftKings via ESPN" accent>
+              <Panel title="Game environment" meta="DraftKings via ESPN" accent>
+                <p className="px-4 pt-3 text-[11px] text-text-faint leading-relaxed">
+                  Context only — a 2025 backtest showed reweighting projections on these lines made start/sit calls
+                  <em className="not-italic text-fade"> worse</em>, so they no longer move the numbers above.
+                </p>
                 {data.movers.length === 0 ? (
                   <p className="px-4 py-6 text-[12px] text-text-faint">No lines posted yet for this week.</p>
                 ) : (
@@ -234,21 +243,16 @@ export default async function DashboardPage({
                         <div className="flex items-center gap-2 mb-1.5">
                           <PositionTag position={p.position} />
                           <span className="text-[13px]">{p.name}</span>
-                          <span className="num ml-auto text-[13px]" style={{ color: p.marketDelta! > 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
-                            {p.marketDelta! > 0 ? '+' : ''}
-                            {p.marketDelta!.toFixed(2)}
-                          </span>
+                          <span className="num ml-auto text-[13px] text-text-dim">{p.points.toFixed(1)}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="num text-[10px] text-text-faint">
-                            {p.basePoints.toFixed(1)} → {p.marketPoints?.toFixed(1)}
-                          </span>
                           <span className="num text-[10px] text-text-faint">
                             {p.team} implied {p.impliedTeamPoints?.toFixed(1)}
                           </span>
                           <span className="num text-[10px]" style={{ color: (p.spread ?? 0) < 0 ? 'var(--color-signal-dim)' : 'var(--color-fade-dim)' }}>
                             {(p.spread ?? 0) < 0 ? `−${Math.abs(p.spread!)}` : `+${p.spread}`}
                           </span>
+                          <span className="num text-[10px] text-text-faint">vs {p.opponent}</span>
                         </div>
                       </li>
                     ))}

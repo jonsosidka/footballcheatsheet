@@ -19,8 +19,31 @@ import {
  * coverage complete.
  */
 
-/** Conservative starting weights; the backtest overwrites these per position. */
-export const DEFAULT_WEIGHTS: LayerWeights = { base: 0.35, market: 0.45, props: 0.2 };
+/**
+ * Layer weights, set by the backtest — NOT by the original hypothesis.
+ *
+ * The market layer is weighted ZERO because it failed validation against 2,624
+ * player-weeks of 2025 actuals (scripts/backtest.ts):
+ *
+ *   - MAE: base 5.477 vs market 5.509. The best blend improved MAE by 0.05%,
+ *     and the bootstrap 95% CI on that difference was [-0.007, +0.013] —
+ *     it includes zero.
+ *   - Start/sit: across 71,614 same-position pairs where the two layers picked
+ *     different players, the base was right 51.10% of the time and the market
+ *     layer 48.90%. On the decision that actually matters, it was worse.
+ *   - Holdout: per-position weights fit on weeks 1-9 held up on weeks 10-14 for
+ *     only 2 of 4 positions, with lifts under 0.4%.
+ *
+ * The most likely explanation is that Rotowire already prices game totals into
+ * its projections, so re-applying them double-counts the same information and
+ * adds noise instead of signal.
+ *
+ * The market code is deliberately kept: implied team totals and spreads remain
+ * useful *context* for a human reading a matchup, and the layer is ready to be
+ * re-weighted the moment a backtest justifies it. But it does not move the
+ * number we show.
+ */
+export const DEFAULT_WEIGHTS: LayerWeights = { base: 1, market: 0, props: 0 };
 
 export interface TeamOdds {
   /** Market-implied points for this team. */
