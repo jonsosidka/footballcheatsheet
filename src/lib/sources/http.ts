@@ -7,6 +7,9 @@
  * caching aggressively rather than by fetching per-player.
  */
 
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
 export class HttpError extends Error {
   constructor(
     message: string,
@@ -45,7 +48,11 @@ export async function fetchJson<T>(url: string, options: FetchJsonOptions = {}):
         signal: controller.signal,
         headers: {
           accept: 'application/json',
-          'user-agent': 'footballcheatsheet/1.0',
+          // ESPN's public endpoints reject unrecognized user-agents with a 403
+          // from datacenter IPs — it worked from a laptop and failed from
+          // Netlify until this was a real browser string.
+          'user-agent': USER_AGENT,
+          'accept-language': 'en-US,en;q=0.9',
           ...headers,
         },
       });
@@ -58,7 +65,13 @@ export async function fetchJson<T>(url: string, options: FetchJsonOptions = {}):
       }
 
       if (!response.ok) {
-        throw new HttpError(`Request failed: ${response.status}`, response.status, url);
+        // Include the host: a bare status is useless when four upstreams are in
+        // play and only one of them is blocking us.
+        throw new HttpError(
+          `Request failed: ${response.status} from ${new URL(url).host}`,
+          response.status,
+          url,
+        );
       }
 
       return (await response.json()) as T;

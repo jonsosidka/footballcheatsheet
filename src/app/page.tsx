@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { getDashboard, listLeagues, type DashboardPlayer } from '@/lib/data/dashboard';
 import { Panel, MarketShift, PositionTag, InjuryTag, Stat } from '@/components/primitives';
 import { ordinal } from '@/lib/engine/value';
+import { RefreshButton } from '@/components/RefreshButton';
+import { Nav } from '@/components/Nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +34,8 @@ export default async function DashboardPage({
               </h1>
             </div>
             <div className="hidden md:block h-9 w-px bg-rule" />
+            <Nav active="/" leagueId={league.id} week={week} />
+            <div className="hidden md:block h-9 w-px bg-rule" />
             <div className="hidden md:flex items-center gap-2">
               {leagues.map((l) => (
                 <Link
@@ -53,6 +57,11 @@ export default async function DashboardPage({
           </div>
 
           <div className="flex items-center gap-6">
+            <RefreshButton
+              leagueId={league.id}
+              week={week}
+              lastSyncedAt={data.lastSyncedAt ? data.lastSyncedAt.toISOString() : null}
+            />
             <MetaBit label="Format" value={`${league.totalRosters}-team ${league.isDynasty ? 'dynasty' : 'redraft'}`} />
             <MetaBit label="Scoring keys" value={String(league.scoringKeyCount)} />
             <MetaBit

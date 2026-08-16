@@ -222,6 +222,42 @@ export async function refreshAlerts(leagueId: string, week: number): Promise<num
   return built.length;
 }
 
+/**
+ * Force a full resync of one league, on demand.
+ *
+ * Distinct from the scheduled jobs: those sweep every tracked league on a
+ * cadence, this one is user-initiated and scoped to what's on screen, so it
+ * pulls rosters/projections/odds and recomputes alerts for a single league as
+ * fast as possible.
+ */
+export async function refreshLeagueNow(leagueId: string, week?: number): Promise<RefreshResult> {
+  const started = Date.now();
+  const state = await getState();
+  const season = state.league_season;
+  const targetWeek = week ?? Math.max(1, state.display_week ?? state.week ?? 1);
+
+  const [leagueRow] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!leagueRow) throw new Error(`League ${leagueId} is not tracked`);
+
+  const positions = requiredProjectionPositions([leagueRow.rosterPositions]);
+
+  const [projectionCount, oddsCount] = await Promise.all([
+    syncWeeklyProjections(season, targetWeek, positions),
+    syncGameOdds(season, targetWeek),
+  ]);
+
+  await syncLeagueMembers(leagueId);
+  const alertCount = await refreshAlerts(leagueId, targetWeek);
+
+  await markSynced(`manual:${leagueId}`, `week ${targetWeek}`);
+
+  return {
+    job: 'manual',
+    ms: Date.now() - started,
+    detail: { league: leagueRow.name, week: targetWeek, projectionCount, oddsCount, alertCount },
+  };
+}
+
 /** Unread alerts for the UI feed. */
 export async function getAlerts(leagueId: string, limit = 20) {
   return db

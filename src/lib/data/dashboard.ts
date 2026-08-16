@@ -7,6 +7,7 @@ import {
   gameOdds,
   marketValues,
   myTeams,
+  syncState,
   type ScoringSettings,
 } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -90,6 +91,8 @@ export interface Dashboard {
   ageCliff: DashboardPlayer[];
 
   marketCoverage: { withMarket: number; total: number; games: number };
+  /** Most recent successful sync touching this league, from sync_state. */
+  lastSyncedAt: Date | null;
 }
 
 export async function listLeagues(): Promise<Array<LeagueSummary & { rosterId: number }>> {
@@ -123,7 +126,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
   const [leagueRow] = await db.select().from(leagues).where(eq(leagues.id, target.id));
   if (!leagueRow) return null;
 
-  const [allRosters, allPlayers, weekProjections, odds] = await Promise.all([
+  const [allRosters, allPlayers, weekProjections, odds, syncRows] = await Promise.all([
     db.select().from(rosters).where(eq(rosters.leagueId, leagueRow.id)),
     db.select().from(players),
     db
@@ -131,7 +134,16 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       .from(projections)
       .where(and(eq(projections.season, leagueRow.season), eq(projections.week, week))),
     db.select().from(gameOdds).where(and(eq(gameOdds.season, leagueRow.season), eq(gameOdds.week, week))),
+    db.select().from(syncState),
   ]);
+
+  // Newest of the jobs that actually refresh this league's data.
+  const relevantSyncKeys = new Set(['hourly', 'gameday', `manual:${leagueRow.id}`]);
+  const lastSyncedAt =
+    syncRows
+      .filter((row) => relevantSyncKeys.has(row.key) && row.lastOkAt)
+      .map((row) => row.lastOkAt as Date)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
   const shape = shapeFromLeague({
     isDynasty: leagueRow.isDynasty,
@@ -265,6 +277,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       totalAssetValue: 0,
       ageCliff: [],
       marketCoverage,
+      lastSyncedAt,
     };
   }
 
@@ -408,6 +421,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     totalAssetValue: assets.reduce((sum, a) => sum + (a.adjustedValue ?? 0), 0),
     ageCliff: assets.filter((a) => a.ageMultiplier < 0.9),
     marketCoverage,
+    lastSyncedAt,
   };
 }
 

@@ -3,6 +3,7 @@ import { getWaiverView } from '@/lib/data/waivers';
 import { listLeagues } from '@/lib/data/dashboard';
 import { Panel, PositionTag, InjuryTag } from '@/components/primitives';
 import { Nav } from '@/components/Nav';
+import { RefreshButton } from '@/components/RefreshButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,12 @@ export default async function WaiversPage({
             <Nav active="/waivers" leagueId={view.leagueId} week={week} />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            <RefreshButton
+              leagueId={view.leagueId}
+              week={week}
+              lastSyncedAt={view.lastSyncedAt ? view.lastSyncedAt.toISOString() : null}
+            />
             {leagues.map((l) => (
               <Link
                 key={l.id}

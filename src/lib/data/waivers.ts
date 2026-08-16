@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { leagues, rosters, players, seasonProjections, projections, gameOdds, marketValues, myTeams } from '@/db/schema';
+import { leagues, rosters, players, seasonProjections, projections, gameOdds, marketValues, myTeams, syncState } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { scoreProjection } from '@/lib/engine/scoring';
 import { projectPlayers, type TeamOdds } from '@/lib/engine/pipeline';
@@ -24,6 +24,7 @@ export interface WaiverView {
   blocked: WaiverSuggestion[];
   needs: PositionalNeed[];
   freeAgentCount: number;
+  lastSyncedAt: Date | null;
 }
 
 /**
@@ -54,6 +55,14 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     db.select().from(gameOdds).where(and(eq(gameOdds.season, league.season), eq(gameOdds.week, week))),
     getTrending('add', 24, 200).catch(() => []),
   ]);
+
+  const syncRows = await db.select().from(syncState);
+  const relevantSyncKeys = new Set(['hourly', 'gameday', `manual:${league.id}`]);
+  const lastSyncedAt =
+    syncRows
+      .filter((row) => relevantSyncKeys.has(row.key) && row.lastOkAt)
+      .map((row) => row.lastOkAt as Date)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
   const shape = shapeFromLeague({
     isDynasty: league.isDynasty,
@@ -213,5 +222,6 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     blocked: blocked.slice(0, 6),
     needs,
     freeAgentCount: freeAgents.length,
+    lastSyncedAt,
   };
 }

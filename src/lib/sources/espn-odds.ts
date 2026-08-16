@@ -16,26 +16,30 @@ import { impliedTeamTotals } from '@/lib/engine/market';
  *   2. core odds   -> per-game DK line
  */
 
-const SITE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+/*
+ * Only the CORE api is used. `site.api.espn.com` (the scoreboard endpoint) is
+ * reachable from a laptop but returns 403 from datacenter IP ranges — it worked
+ * locally and broke the moment the cron ran on Netlify. `sports.core.api` has
+ * no such block and carries everything needed: the week's event list, each
+ * event's shortName ("NE @ SEA"), kickoff, and the DraftKings line.
+ */
 const CORE = 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl';
 
 /** ESPN season types: 1 = preseason, 2 = regular, 3 = postseason. */
 export const SEASON_TYPE = { pre: 1, regular: 2, post: 3 } as const;
 
-interface ScoreboardResponse {
-  season?: { year: number; type: number };
-  week?: { number: number };
-  events?: Array<{
-    id: string;
-    date: string;
-    competitions: Array<{
-      id: string;
-      competitors: Array<{
-        homeAway: 'home' | 'away';
-        team: { abbreviation: string; displayName: string };
-      }>;
-    }>;
-  }>;
+interface RefListResponse {
+  count: number;
+  items?: Array<{ $ref: string }>;
+}
+
+interface CoreEventResponse {
+  id: string;
+  date: string;
+  /** "NE @ SEA" — away @ home. Saves an extra fetch per team. */
+  shortName: string;
+  name: string;
+  competitions?: Array<{ id: string }>;
 }
 
 interface CoreOddsResponse {
@@ -87,29 +91,51 @@ export function normalizeTeam(abbreviation: string): string {
 /** Preferred books in order; we take the first one that has a usable line. */
 const BOOK_PRIORITY = ['draftkings', 'espn bet', 'caesars', 'bet365'];
 
+/**
+ * Parse "NE @ SEA" into away/home abbreviations.
+ *
+ * ESPN uses two separators: most games are "AWAY @ HOME", but some — neutral
+ * site and special games — come through as "SF VS LAR". The ordering is the
+ * same in both (the full `name` field confirms "San Francisco 49ers at Los
+ * Angeles Rams"), so VS is treated identically. Missing this dropped a game
+ * per week, silently costing every player on those two teams their market
+ * layer.
+ *
+ * Returns null rather than guessing if the format changes again.
+ */
+export function parseShortName(shortName: string): { away: string; home: string } | null {
+  const match = shortName?.match(/^\s*([A-Z]{2,4})\s*(?:@|VS)\s*([A-Z]{2,4})\s*$/i);
+  if (!match) return null;
+  return { away: normalizeTeam(match[1].toUpperCase()), home: normalizeTeam(match[2].toUpperCase()) };
+}
+
 export async function getWeekGameLines(
   season: string,
   week: number,
   seasonType: number = SEASON_TYPE.regular,
 ): Promise<GameLine[]> {
-  const scoreboard = await fetchJson<ScoreboardResponse>(
-    `${SITE}/scoreboard?dates=${season}&seasontype=${seasonType}&week=${week}`,
+  // Canonical season path. The flat /events?dates= form filters by calendar
+  // year, which returns the previous season's January games for a 2026 query.
+  const list = await fetchJson<RefListResponse>(
+    `${CORE}/seasons/${season}/types/${seasonType}/weeks/${week}/events?limit=40`,
     { nullOn404: true },
-  );
+  ).catch(() => null);
 
-  const events = scoreboard?.events ?? [];
-  if (events.length === 0) return [];
+  const refs = list?.items ?? [];
+  if (refs.length === 0) return [];
 
-  const lines = await mapLimit(events, 4, async (event): Promise<GameLine | null> => {
-    const competition = event.competitions?.[0];
-    if (!competition) return null;
+  const lines = await mapLimit(refs, 4, async (ref): Promise<GameLine | null> => {
+    const event = await fetchJson<CoreEventResponse>(ref.$ref.replace(/^http:/, 'https:'), {
+      nullOn404: true,
+    }).catch(() => null);
+    if (!event) return null;
 
-    const home = competition.competitors.find((c) => c.homeAway === 'home');
-    const away = competition.competitors.find((c) => c.homeAway === 'away');
-    if (!home || !away) return null;
+    const teams = parseShortName(event.shortName);
+    if (!teams) return null;
 
+    const competitionId = event.competitions?.[0]?.id ?? event.id;
     const odds = await fetchJson<CoreOddsResponse>(
-      `${CORE}/events/${event.id}/competitions/${competition.id}/odds`,
+      `${CORE}/events/${event.id}/competitions/${competitionId}/odds`,
       { nullOn404: true },
     ).catch(() => null);
 
@@ -123,8 +149,8 @@ export async function getWeekGameLines(
       gameId: event.id,
       season,
       week,
-      homeTeam: normalizeTeam(home.team.abbreviation),
-      awayTeam: normalizeTeam(away.team.abbreviation),
+      homeTeam: teams.home,
+      awayTeam: teams.away,
       kickoff: event.date ? new Date(event.date) : null,
       spread,
       total,

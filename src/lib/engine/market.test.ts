@@ -15,6 +15,7 @@ import {
   normalizeRatio,
 } from './market';
 import type { StatLine } from '@/db/schema';
+import { parseShortName } from '@/lib/sources/espn-odds';
 
 describe('americanToImpliedProb', () => {
   it('converts favorites and underdogs', () => {
@@ -341,5 +342,28 @@ describe('normalInverseCdf', () => {
   it('rejects out-of-domain input', () => {
     expect(Number.isNaN(normalInverseCdf(0))).toBe(true);
     expect(Number.isNaN(normalInverseCdf(1))).toBe(true);
+  });
+});
+
+describe('parseShortName (ESPN core event)', () => {
+  it('parses away @ home', () => {
+    expect(parseShortName('NE @ SEA')).toEqual({ away: 'NE', home: 'SEA' });
+    expect(parseShortName('CAR @ TB')).toEqual({ away: 'CAR', home: 'TB' });
+  });
+
+  it('normalizes ESPN abbreviations that differ from Sleeper', () => {
+    expect(parseShortName('WSH @ DAL')).toEqual({ away: 'WAS', home: 'DAL' });
+  });
+
+  it('handles the VS separator ESPN uses for neutral-site games', () => {
+    // "SF VS LAR" is the same away-at-home ordering as "@". Missing this
+    // dropped one game a week from the market layer entirely.
+    expect(parseShortName('SF VS LAR')).toEqual({ away: 'SF', home: 'LAR' });
+    expect(parseShortName('SF vs LAR')).toEqual({ away: 'SF', home: 'LAR' });
+  });
+
+  it('returns null rather than guessing on an unexpected format', () => {
+    expect(parseShortName('New England at Seattle')).toBeNull();
+    expect(parseShortName('')).toBeNull();
   });
 });
