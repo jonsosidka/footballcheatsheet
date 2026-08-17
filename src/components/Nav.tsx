@@ -3,6 +3,7 @@ import Link from 'next/link';
 const TABS = [
   { href: '/', label: 'Dashboard' },
   { href: '/waivers', label: 'Waivers' },
+  { href: '/trades', label: 'Trades' },
 ];
 
 export function Nav({ active, leagueId, week }: { active: string; leagueId?: string; week?: number }) {
