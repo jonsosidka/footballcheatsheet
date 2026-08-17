@@ -120,6 +120,47 @@ export interface TrendingPlayer {
   count: number;
 }
 
+/**
+ * A draft. `settings` carries teams / rounds / reversal_round / pick_timer and,
+ * for auctions, budget. `draft_order` maps user_id -> draft slot and
+ * `slot_to_roster_id` maps that slot onto the league roster it becomes — both
+ * are null until the commissioner sets the order.
+ */
+export interface SleeperDraft {
+  draft_id: string;
+  /** Null for mock drafts, which exist outside any league. */
+  league_id: string | null;
+  /** snake | linear | auction */
+  type: string;
+  /** pre_draft | drafting | paused | complete */
+  status: string;
+  sport: string;
+  season: string;
+  season_type: string;
+  start_time: number | null;
+  last_picked: number | null;
+  settings: Record<string, number>;
+  metadata: { scoring_type?: string; name?: string; description?: string } | null;
+  draft_order: Record<string, number> | null;
+  slot_to_roster_id: Record<string, number> | null;
+  created: number | null;
+}
+
+export interface SleeperDraftPick {
+  draft_id: string;
+  /** 1-based, counting across the whole draft rather than within the round. */
+  pick_no: number;
+  player_id: string;
+  /** User who made the pick. Empty string for autopicks in mocks. */
+  picked_by: string | null;
+  /** Sleeper types this as a string in places and a number in others. */
+  roster_id: number | string | null;
+  round: number;
+  draft_slot: number;
+  is_keeper: boolean | null;
+  metadata: Record<string, string> | null;
+}
+
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
@@ -154,6 +195,70 @@ export async function getLeagueRosters(leagueId: string): Promise<SleeperRoster[
 
 export async function getMatchups(leagueId: string, week: number): Promise<SleeperMatchup[]> {
   return (await fetchJson<SleeperMatchup[]>(`${V1}/league/${leagueId}/matchups/${week}`)) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Drafts
+// ---------------------------------------------------------------------------
+
+export async function getLeagueDrafts(leagueId: string): Promise<SleeperDraft[]> {
+  return (await fetchJson<SleeperDraft[]>(`${V1}/league/${leagueId}/drafts`)) ?? [];
+}
+
+/** Mock drafts live on the user, not on a league. */
+export async function getUserDrafts(userId: string, season: string): Promise<SleeperDraft[]> {
+  return (await fetchJson<SleeperDraft[]>(`${V1}/user/${userId}/drafts/nfl/${season}`)) ?? [];
+}
+
+export async function getDraft(draftId: string): Promise<SleeperDraft | null> {
+  return fetchJson<SleeperDraft>(`${V1}/draft/${draftId}`, { nullOn404: true, cache: 'no-store' });
+}
+
+/**
+ * Every pick made so far, oldest first.
+ *
+ * Polled on a few-second cadence while a draft is live, so it is deliberately
+ * uncached and given a short retry budget: during a draft, stale advice is
+ * worse than a momentary gap, and the next poll is seconds away.
+ */
+export async function getDraftPicks(draftId: string): Promise<SleeperDraftPick[]> {
+  return (
+    (await fetchJson<SleeperDraftPick[]>(`${V1}/draft/${draftId}/picks`, {
+      retries: 1,
+      timeoutMs: 10_000,
+      cache: 'no-store',
+    })) ?? []
+  );
+}
+
+/**
+ * Average draft position, read from the same season-projection payload we
+ * already store — Sleeper ships ADP alongside the projected stat line, keyed by
+ * scoring format.
+ *
+ * Format matters more than it looks: in superflex, quarterbacks move up 30+
+ * picks, so pulling `adp_ppr` in a 2QB league would systematically claim every
+ * QB is a screaming value and every RB a reach.
+ */
+export function adpFromStats(
+  stats: StatLine | null | undefined,
+  league: { isSuperflex: boolean; pprType: number },
+): number | null {
+  if (!stats) return null;
+
+  const preferred = league.isSuperflex
+    ? ['adp_2qb', 'adp_dynasty_2qb']
+    : league.pprType >= 1
+      ? ['adp_ppr']
+      : league.pprType > 0
+        ? ['adp_half_ppr', 'adp_ppr']
+        : ['adp_std', 'adp_ppr'];
+
+  for (const key of [...preferred, 'adp_ppr', 'adp_half_ppr', 'adp_std']) {
+    const value = stats[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
 }
 
 /**

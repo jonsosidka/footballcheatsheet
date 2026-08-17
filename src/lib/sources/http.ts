@@ -27,10 +27,16 @@ export interface FetchJsonOptions {
   headers?: Record<string, string>;
   /** Treat 404 as "no data yet" rather than an error (common preseason). */
   nullOn404?: boolean;
+  /**
+   * Passed straight to fetch. Live draft polling needs 'no-store' — a cached
+   * pick list is worse than none, because it silently advises on a board that
+   * has already moved on.
+   */
+  cache?: RequestCache;
 }
 
 export async function fetchJson<T>(url: string, options: FetchJsonOptions = {}): Promise<T | null> {
-  const { retries = 3, timeoutMs = 20_000, headers = {}, nullOn404 = false } = options;
+  const { retries = 3, timeoutMs = 20_000, headers = {}, nullOn404 = false, cache } = options;
 
   let lastError: unknown;
 
@@ -46,6 +52,7 @@ export async function fetchJson<T>(url: string, options: FetchJsonOptions = {}):
     try {
       const response = await fetch(url, {
         signal: controller.signal,
+        ...(cache ? { cache } : {}),
         headers: {
           accept: 'application/json',
           // ESPN's public endpoints reject unrecognized user-agents with a 403

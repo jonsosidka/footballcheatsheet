@@ -14,6 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "smoke": "tsx scripts/smoke-sources.ts",
+    "draft-sim": "tsx scripts/draft-sim.ts",
     "demo": "tsx scripts/demo-pipeline.ts"
   },
   "dependencies": {
