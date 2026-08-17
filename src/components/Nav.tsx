@@ -4,6 +4,7 @@ const TABS = [
   { href: '/', label: 'Dashboard' },
   { href: '/waivers', label: 'Waivers' },
   { href: '/trades', label: 'Trades' },
+  { href: '/setup', label: 'Setup' },
 ];
 
 export function Nav({ active, leagueId, week }: { active: string; leagueId?: string; week?: number }) {
