@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { getDraftView } from '@/lib/data/draft';
-import { listLeagues } from '@/lib/data/dashboard';
-import { Nav } from '@/components/Nav';
+import { listLeagues, type LeagueSummary } from '@/lib/data/dashboard';
+import { AppHeader } from '@/components/AppHeader';
 import { DraftBoard } from '@/components/DraftBoard';
 
 export const dynamic = 'force-dynamic';
@@ -18,10 +17,13 @@ export const dynamic = 'force-dynamic';
 export default async function DraftPage({
   searchParams,
 }: {
-  searchParams: Promise<{ league?: string; draft?: string; slot?: string }>;
+  searchParams: Promise<{ league?: string; draft?: string; slot?: string; week?: string }>;
 }) {
   const params = await searchParams;
   const slot = Number(params.slot);
+  // The board has no week of its own, but it must not drop the one the rest
+  // of the app is on while you pass through it.
+  const carriedWeek = Number(params.week) || undefined;
 
   const [leagues, view] = await Promise.all([
     listLeagues(),
@@ -39,9 +41,15 @@ export default async function DraftPage({
 
   if (!view) {
     return (
-      <main className="min-h-screen">
-        <Header leagues={leagues} activeLeagueId={params.league} title="Draft" subtitle="no draft found" />
-        <div className="max-w-[1440px] mx-auto px-6 py-16">
+      <main className="min-h-dvh pb-tabbar">
+        <Header
+          leagues={leagues}
+          activeLeagueId={params.league}
+          carriedWeek={carriedWeek}
+          title="Draft"
+          subtitle="no draft found"
+        />
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-12 sm:py-16">
           <p className="text-[13px] text-text-dim mb-3">
             {leagues.length === 0
               ? 'No leagues imported yet — run through setup first.'
@@ -59,10 +67,11 @@ export default async function DraftPage({
   }
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-dvh pb-tabbar">
       <Header
         leagues={leagues}
         activeLeagueId={view.leagueId ?? params.league}
+        carriedWeek={carriedWeek}
         title={view.draftName}
         subtitle={`${view.teams}-team ${view.type} · ${view.rounds} rounds · ${view.status.replace('_', ' ')}`}
       />
@@ -74,44 +83,28 @@ export default async function DraftPage({
 function Header({
   leagues,
   activeLeagueId,
+  carriedWeek,
   title,
   subtitle,
 }: {
-  leagues: Array<{ id: string; name: string }>;
+  leagues: LeagueSummary[];
   activeLeagueId?: string | null;
+  carriedWeek?: number;
   title: string;
   subtitle: string;
 }) {
   return (
-    <header className="border-b border-rule">
-      <div className="max-w-[1440px] mx-auto px-6 py-4 flex items-end justify-between gap-8 flex-wrap">
-        <div className="flex items-end gap-5">
-          <div>
-            <div className="eyebrow mb-1">{subtitle}</div>
-            <h1 className="font-display text-[2rem] leading-none tracking-tight">
-              Draft <em className="text-signal not-italic">/</em> {title}
-            </h1>
-          </div>
-          <div className="h-9 w-px bg-rule hidden md:block" />
-          <Nav active="/draft" leagueId={activeLeagueId ?? undefined} />
-        </div>
-
-        <div className="flex items-center gap-2">
-          {leagues.map((league) => (
-            <Link
-              key={league.id}
-              href={`/draft?league=${league.id}`}
-              className={`px-3 py-1.5 border text-[11px] transition-colors ${
-                league.id === activeLeagueId
-                  ? 'border-signal/40 bg-signal/10 text-signal'
-                  : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'
-              }`}
-            >
-              {league.name}
-            </Link>
-          ))}
-        </div>
-      </div>
-    </header>
+    <AppHeader
+      eyebrow={subtitle}
+      title={
+        <>
+          Draft <em className="text-signal not-italic">/</em> {title}
+        </>
+      }
+      active="/draft"
+      leagues={leagues}
+      activeLeagueId={activeLeagueId}
+      carriedWeek={carriedWeek}
+    />
   );
 }

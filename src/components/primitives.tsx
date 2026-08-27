@@ -129,7 +129,9 @@ export function Stat({
     <div>
       <div className="eyebrow mb-2">{label}</div>
       <div className="flex items-baseline gap-1.5">
-        <span className="num text-[2.75rem] leading-none tracking-tight" style={{ color }}>
+        {/* Two of these sit side by side on a phone, so the figure has to give
+            back some size or it wraps out of its card. */}
+        <span className="num text-[2rem] sm:text-[2.75rem] leading-none tracking-tight" style={{ color }}>
           {value}
         </span>
         {unit ? <span className="eyebrow text-text-faint">{unit}</span> : null}

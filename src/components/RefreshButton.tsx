@@ -39,7 +39,8 @@ export function RefreshButton({
         type="button"
         onClick={run}
         disabled={pending}
-        className="group flex items-center gap-1.5 px-2.5 py-1.5 border border-rule text-[11px] text-text-dim transition-colors hover:border-signal/40 hover:text-signal disabled:opacity-50 disabled:cursor-wait disabled:hover:border-rule disabled:hover:text-text-dim"
+        aria-label="Refresh this league"
+        className="press group flex items-center justify-center gap-1.5 border border-rule text-[11px] text-text-dim transition-colors hover:border-signal/40 hover:text-signal disabled:opacity-50 disabled:cursor-wait disabled:hover:border-rule disabled:hover:text-text-dim min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 px-2.5 py-1.5"
         title="Re-pull rosters, projections and betting lines for this league"
       >
         <svg
@@ -56,15 +57,17 @@ export function RefreshButton({
           <path d="M21 12a9 9 0 1 1-2.64-6.36" />
           <path d="M21 3v6h-6" />
         </svg>
-        {pending ? 'Syncing' : 'Refresh'}
+        {/* The icon alone is unambiguous at thumb size; the word costs a third
+            of the phone header's width. */}
+        <span className="hidden md:inline">{pending ? 'Syncing' : 'Refresh'}</span>
       </button>
 
       {error ? (
-        <span className="num text-[10px] text-fade max-w-[220px] leading-tight" role="status">
+        <span className="num text-[10px] text-fade max-w-[160px] md:max-w-[220px] leading-tight" role="status">
           {error}
         </span>
       ) : (
-        <span className="eyebrow" role="status">
+        <span className="eyebrow hidden md:inline" role="status">
           {pending ? 'working' : lastSyncedAt ? `synced ${timeAgo(new Date(lastSyncedAt))}` : 'never synced'}
         </span>
       )}

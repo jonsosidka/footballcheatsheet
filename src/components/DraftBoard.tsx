@@ -53,11 +53,11 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
   const complete = view.status === 'complete';
 
   return (
-    <div className="max-w-[1440px] mx-auto px-6 py-5">
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-5">
       {/* --- clock ---------------------------------------------------------- */}
       <div
         key={pulse}
-        className="rise flex flex-wrap items-end gap-x-10 gap-y-4 mb-5 pb-5 border-b border-rule"
+        className="rise flex flex-wrap items-end gap-x-6 sm:gap-x-10 gap-y-4 mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule"
       >
         <div>
           <div className="eyebrow mb-1">{complete ? 'Draft complete' : 'On the clock'}</div>
@@ -98,13 +98,13 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
           value={view.drift === 0 ? 'on pace' : `${view.drift > 0 ? '+' : ''}${view.drift.toFixed(1)}`}
         />
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-3">
           {error ? <span className="num text-[10px] text-fade max-w-[200px]">{error}</span> : null}
           <button
             type="button"
             onClick={() => (live ? setLive(false) : (setLive(true), refresh()))}
             disabled={complete}
-            className="flex items-center gap-2 px-2.5 py-1.5 border border-rule text-[11px] text-text-dim transition-colors hover:border-signal/40 hover:text-signal disabled:opacity-40"
+            className="press flex items-center gap-2 px-2.5 py-1.5 min-h-[44px] sm:min-h-0 border border-rule text-[11px] text-text-dim transition-colors hover:border-signal/40 hover:text-signal disabled:opacity-40"
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${live && !complete ? 'pulse' : ''}`}
@@ -131,9 +131,9 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-4 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-3 sm:gap-4 items-start">
         {/* --- the recommendation ------------------------------------------ */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <Panel
             title={view.isMyPick ? 'Take him' : `Plan for ${view.myNextLabel ?? 'your next pick'}`}
             accent
@@ -155,13 +155,16 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                       background: index === 0 ? 'rgba(201,242,77,0.04)' : undefined,
                     }}
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="num text-[10px] text-text-faint w-5 pt-1 shrink-0">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-2 sm:gap-3">
+                      <span className="num text-[10px] text-text-faint w-5 pt-1 shrink-0 hidden sm:block">
                         {String(index + 1).padStart(2, '0')}
                       </span>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="num text-[10px] text-text-faint sm:hidden">
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
                           <PositionTag position={suggestion.player.position} />
                           <span className={index === 0 ? 'text-[14.5px]' : 'text-[13.5px]'}>
                             {suggestion.player.name}
@@ -218,13 +221,13 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                         </div>
                       </div>
 
-                      <div className="shrink-0 text-right w-[112px]">
+                      <div className="shrink-0 w-full sm:w-[112px] flex sm:block items-baseline gap-2 text-right pt-1 sm:pt-0 border-t border-rule/60 sm:border-0">
                         <div className="num text-[1.5rem] leading-none text-signal">
                           {suggestion.marginal.toFixed(0)}
                         </div>
-                        <div className="eyebrow mt-1">pts added</div>
+                        <div className="eyebrow sm:mt-1">pts added</div>
                         <div
-                          className="num text-[10px] mt-1.5"
+                          className="num text-[10px] sm:mt-1.5 ml-auto sm:ml-0"
                           style={{
                             color:
                               suggestion.edge >= 0 ? 'var(--color-signal-dim)' : 'var(--color-text-faint)',

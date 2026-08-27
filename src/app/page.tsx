@@ -1,9 +1,8 @@
-import Link from 'next/link';
 import { getDashboard, listLeagues, type DashboardPlayer } from '@/lib/data/dashboard';
 import { Panel, PositionTag, InjuryTag, Stat } from '@/components/primitives';
 import { ordinal } from '@/lib/engine/value';
 import { RefreshButton } from '@/components/RefreshButton';
-import { Nav } from '@/components/Nav';
+import { AppHeader } from '@/components/AppHeader';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,64 +21,48 @@ export default async function DashboardPage({
   const { league, posture, occupancy } = data;
 
   return (
-    <main className="min-h-screen">
-      {/* ---------------------------------------------------------------- */}
-      <header className="border-b border-rule">
-        <div className="max-w-[1440px] mx-auto px-6 py-4 flex items-end justify-between gap-8 flex-wrap">
-          <div className="flex items-end gap-5">
-            <div>
-              <div className="eyebrow mb-1">Week {week} · {league.season}</div>
-              <h1 className="font-display text-[2rem] leading-none tracking-tight">
-                Football <em className="text-signal not-italic">Cheatsheet</em>
-              </h1>
-            </div>
-            <div className="hidden md:block h-9 w-px bg-rule" />
-            <Nav active="/" leagueId={league.id} week={week} />
-            <div className="hidden md:block h-9 w-px bg-rule" />
-            <div className="hidden md:flex items-center gap-2">
-              {leagues.map((l) => (
-                <Link
-                  key={l.id}
-                  href={`/?league=${l.id}&week=${week}`}
-                  className={`px-3 py-1.5 border text-[11px] transition-colors ${
-                    l.id === league.id
-                      ? 'border-signal/40 bg-signal/10 text-signal'
-                      : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'
-                  }`}
-                >
-                  {l.name}
-                  <span className="num ml-2 text-[9px] opacity-60">
-                    {l.isDynasty ? 'DYN' : 'RED'}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <RefreshButton
-              leagueId={league.id}
-              week={week}
-              lastSyncedAt={data.lastSyncedAt ? data.lastSyncedAt.toISOString() : null}
+    <main className="min-h-dvh pb-tabbar">
+      <AppHeader
+        eyebrow={`Week ${week} · ${league.season}`}
+        title={
+          <>
+            Football <em className="text-signal not-italic">Cheatsheet</em>
+          </>
+        }
+        active="/"
+        leagues={leagues}
+        activeLeagueId={league.id}
+        week={week}
+        actions={
+          <RefreshButton
+            leagueId={league.id}
+            week={week}
+            lastSyncedAt={data.lastSyncedAt ? data.lastSyncedAt.toISOString() : null}
+          />
+        }
+        meta={
+          <>
+            <MetaBit
+              label="Format"
+              value={`${league.totalRosters}-team ${league.isDynasty ? 'dynasty' : 'redraft'}`}
             />
-            <MetaBit label="Format" value={`${league.totalRosters}-team ${league.isDynasty ? 'dynasty' : 'redraft'}`} />
             <MetaBit label="Scoring keys" value={String(league.scoringKeyCount)} />
             <MetaBit
               label="Market coverage"
               value={`${data.marketCoverage.withMarket}/${data.marketCoverage.total}`}
               tone="signal"
             />
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {!data.hasRoster ? (
         <PreDraftNotice name={league.name} />
       ) : (
-        <div className="max-w-[1440px] mx-auto px-6 py-6 space-y-4">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-3 sm:space-y-4">
           {/* ---------------- hero row ---------------- */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr_1fr_1.3fr] gap-4">
-            <div className="rise bg-ink-card border border-rule p-5" style={{ animationDelay: '0ms' }}>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-[1.1fr_1fr_1fr_1.3fr]">
+            <div className="rise bg-ink-card border border-rule p-4 sm:p-5" style={{ animationDelay: '0ms' }}>
               <Stat
                 label="Points left on bench"
                 value={data.pointsLeftOnBench.toFixed(1)}
@@ -97,7 +80,7 @@ export default async function DashboardPage({
               />
             </div>
 
-            <div className="rise bg-ink-card border border-rule p-5" style={{ animationDelay: '60ms' }}>
+            <div className="rise bg-ink-card border border-rule p-4 sm:p-5" style={{ animationDelay: '60ms' }}>
               <Stat
                 label="Optimal projection"
                 value={data.optimalPoints.toFixed(1)}
@@ -105,7 +88,7 @@ export default async function DashboardPage({
               />
             </div>
 
-            <div className="rise bg-ink-card border border-rule p-5" style={{ animationDelay: '120ms' }}>
+            <div className="rise bg-ink-card border border-rule p-4 sm:p-5 col-span-2 lg:col-span-1" style={{ animationDelay: '120ms' }}>
               <Stat
                 label="Roster slots"
                 value={`${occupancy.playersActive}/${occupancy.totalActiveSlots}`}
@@ -120,16 +103,16 @@ export default async function DashboardPage({
               />
             </div>
 
-            {posture ? <PostureCard posture={posture} strengths={data.leagueStrengths} /> : <div />}
+            {posture ? <PostureCard posture={posture} strengths={data.leagueStrengths} /> : <div className="hidden lg:block" />}
           </div>
 
           {/* ---------------- main grid ---------------- */}
-          <div className="grid grid-cols-1 xl:grid-cols-[1.55fr_1fr] gap-4 items-start">
-            <div className="space-y-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[1.55fr_1fr] gap-3 sm:gap-4 items-start">
+            <div className="space-y-3 sm:space-y-4">
               <Panel
                 title="Optimal lineup"
                 accent
-                meta={<span>game environment</span>}
+                meta={<span className="hidden lg:inline">game environment</span>}
               >
                 <table className="w-full">
                   <tbody>
@@ -139,23 +122,23 @@ export default async function DashboardPage({
                         className="border-b border-rule/60 last:border-0 hover:bg-ink-hover transition-colors rise"
                         style={{ animationDelay: `${140 + i * 22}ms` }}
                       >
-                        <td className="pl-4 py-2 w-[92px]">
+                        <td className="pl-3 sm:pl-4 py-2.5 sm:py-2 w-[62px] sm:w-[92px]">
                           <span className="eyebrow text-text-dim">{slot.slot.replace('_', ' ')}</span>
                         </td>
-                        <td className="py-2">
+                        <td className="py-2.5 sm:py-2 min-w-0">
                           {slot.player ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[13px]">{slot.player.name}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-[13px] truncate">{slot.player.name}</span>
                               <InjuryTag status={slot.player.injuryStatus} />
                             </div>
                           ) : (
                             <span className="text-[13px] text-text-faint italic">empty</span>
                           )}
                         </td>
-                        <td className="py-2 w-[52px]">
+                        <td className="py-2.5 sm:py-2 w-[46px] sm:w-[52px]">
                           {slot.player ? <PositionTag position={slot.player.position} /> : null}
                         </td>
-                        <td className="py-2 w-[86px]">
+                        <td className="hidden sm:table-cell py-2 w-[86px]">
                           {slot.player?.team ? (
                             <span className="num text-[10px] text-text-faint">
                               {slot.player.team}
@@ -163,7 +146,7 @@ export default async function DashboardPage({
                             </span>
                           ) : null}
                         </td>
-                        <td className="py-2 w-[112px] text-right pr-1">
+                        <td className="hidden lg:table-cell py-2 w-[112px] text-right pr-1">
                           {slot.player?.impliedTeamPoints != null ? (
                             <span className="num text-[10px] text-text-faint">
                               {slot.player.impliedTeamPoints.toFixed(1)} implied
@@ -175,7 +158,7 @@ export default async function DashboardPage({
                             <span className="num text-[10px] text-text-faint">—</span>
                           )}
                         </td>
-                        <td className="py-2 pr-4 w-[64px] text-right">
+                        <td className="py-2.5 sm:py-2 pr-3 sm:pr-4 w-[56px] sm:w-[64px] text-right">
                           <span className="num text-[15px]">{slot.player?.points.toFixed(1) ?? '—'}</span>
                         </td>
                       </tr>
@@ -196,8 +179,11 @@ export default async function DashboardPage({
                 <Panel title="Suggested changes" meta={`${data.changes.length} move${data.changes.length === 1 ? '' : 's'}`}>
                   <ul>
                     {data.changes.map((c, i) => (
-                      <li key={i} className="px-4 py-2.5 border-b border-rule/60 last:border-0 flex items-center gap-3 text-[12px]">
-                        <span className="eyebrow w-[72px] shrink-0">{c.slot.replace('_', ' ')}</span>
+                      <li
+                        key={i}
+                        className="px-4 py-2.5 border-b border-rule/60 last:border-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]"
+                      >
+                        <span className="eyebrow w-[62px] sm:w-[72px] shrink-0">{c.slot.replace('_', ' ')}</span>
                         <span className="text-signal">{c.incoming.name}</span>
                         <span className="text-text-faint">over</span>
                         <span className="text-text-dim line-through decoration-fade/50">
@@ -397,8 +383,11 @@ function PostureCard({
   const max = Math.max(...strengths.map((s) => s.strength), 1);
 
   return (
-    <div className="rise bg-ink-card border border-rule p-5 flex gap-6" style={{ animationDelay: '180ms' }}>
-      <div className="shrink-0 max-w-[210px]">
+    <div
+      className="rise bg-ink-card border border-rule p-4 sm:p-5 col-span-2 lg:col-span-1 flex flex-col sm:flex-row gap-4 sm:gap-6"
+      style={{ animationDelay: '180ms' }}
+    >
+      <div className="shrink-0 sm:max-w-[210px]">
         <div className="flex items-center gap-2 mb-2">
           <span className="eyebrow">Posture</span>
           <span
@@ -473,7 +462,7 @@ function PostureCard({
 
 function PreDraftNotice({ name }: { name: string }) {
   return (
-    <div className="max-w-[1440px] mx-auto px-6 py-24 text-center">
+    <div className="max-w-[1440px] mx-auto px-6 py-20 sm:py-24 text-center">
       <div className="eyebrow mb-3">Nothing to analyze yet</div>
       <h2 className="font-display text-3xl mb-3">{name} hasn&apos;t drafted</h2>
       <p className="text-[13px] text-text-dim max-w-md mx-auto leading-relaxed">
@@ -486,7 +475,7 @@ function PreDraftNotice({ name }: { name: string }) {
 
 function EmptyState() {
   return (
-    <main className="min-h-screen grid place-items-center px-6">
+    <main className="min-h-dvh grid place-items-center px-6">
       <div className="text-center max-w-md">
         <div className="eyebrow mb-3">No leagues imported</div>
         <h1 className="font-display text-4xl mb-4">

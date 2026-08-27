@@ -164,3 +164,203 @@ body::after {
   scrollbar-width: thin;
   scrollbar-color: var(--color-rule-bright) transparent;
 }
+
+/* ------------------------------------------------------------------------
+ * Phone chrome.
+ *
+ * The app is used one-handed, on a phone, at the exact moment a decision has
+ * to be made — waiver claim before the deadline, a pick on the clock. So the
+ * touch layer is treated as the primary interface rather than a shrunk-down
+ * desktop: iOS-native gestures and affordances (bottom sheets, a fixed tab
+ * bar, drag-to-dismiss, press feedback) laid over the same Terminal Sharp
+ * surface. The rules stay hairline and the numbers stay mono; only the
+ * interaction model changes.
+ * --------------------------------------------------------------------- */
+
+html {
+  /* Landscape rotation must not silently inflate type and break the grids. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* Kill the rubber-band that reveals white behind a near-black page, and
+   * stop pull-to-refresh from firing while scrolling a long waiver list. */
+  overscroll-behavior-y: none;
+}
+
+/* The grey flash on tap is the single loudest "this is a website" tell. */
+a,
+button,
+[role='button'],
+input,
+select,
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chrome (nav, tab bar, sheet headers) should never long-press into a text
+ * selection or a callout menu the way page content legitimately does. */
+.chrome {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+/* --- safe areas ------------------------------------------------------- */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.px-safe {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+/* Clearance so the fixed tab bar never covers the last row of a list. */
+.pb-tabbar {
+  padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .pb-tabbar {
+    padding-bottom: 0;
+  }
+}
+
+/* --- press feedback ---------------------------------------------------- */
+/* iOS confirms a touch before the work completes. Without this the app feels
+ * broken on a slow network even when it isn't. */
+.press {
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+.press:active {
+  transform: scale(0.97);
+  opacity: 0.82;
+}
+.press-row:active {
+  background: var(--color-ink-hover);
+}
+
+/* --- bottom sheet ------------------------------------------------------ */
+@keyframes sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-fall {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes veil-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The overshoot-free spring iOS uses for sheet presentation. */
+.sheet-in {
+  animation: sheet-rise 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.sheet-out {
+  animation: sheet-fall 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.veil-in {
+  animation: veil-in 0.24s ease both;
+}
+.veil-out {
+  animation: veil-out 0.22s ease both;
+}
+
+/* Settling back after a drag that didn't clear the dismiss threshold. */
+.sheet-settle {
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (min-width: 640px) {
+  /* On a pointer device a panel pinned to the bottom edge is a long way from
+   * the cursor, so the same component presents as a centred card instead. */
+  .sheet-in {
+    animation: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .sheet-out {
+    animation: veil-out 0.18s ease both;
+  }
+}
+
+/* --- horizontal rails --------------------------------------------------- */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* A scroll container inside a sheet must not hand its overscroll to the page
+ * underneath, or the sheet drags the dashboard around behind it. */
+.scroll-contain {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-in,
+  .sheet-out,
+  .veil-in,
+  .veil-out {
+    animation-duration: 0.01ms;
+  }
+  .press,
+  .sheet-settle {
+    transition: none;
+  }
+  .press:active {
+    transform: none;
+  }
+}
+
+/* Indeterminate route-change bar: no server progress to report, so it sweeps
+ * rather than pretending to know a percentage. */
+@keyframes nav-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.nav-progress {
+  animation: nav-progress 1.1s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}

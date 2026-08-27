@@ -1,8 +1,7 @@
-import Link from 'next/link';
 import { getTradeView } from '@/lib/data/trades';
 import { listLeagues } from '@/lib/data/dashboard';
 import { Panel, PositionTag } from '@/components/primitives';
-import { Nav } from '@/components/Nav';
+import { AppHeader } from '@/components/AppHeader';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,53 +17,36 @@ export default async function TradesPage({
 
   if (!view) {
     return (
-      <main className="min-h-screen grid place-items-center">
+      <main className="min-h-dvh grid place-items-center">
         <p className="text-[13px] text-text-dim">No leagues imported yet.</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen">
-      <header className="border-b border-rule">
-        <div className="max-w-[1440px] mx-auto px-6 py-4 flex items-end justify-between gap-8 flex-wrap">
-          <div className="flex items-end gap-5">
-            <div>
-              <div className="eyebrow mb-1">Week {week} · trade finder</div>
-              <h1 className="font-display text-[2rem] leading-none tracking-tight">
-                Trade <em className="text-signal not-italic">Targets</em>
-              </h1>
-            </div>
-            <div className="h-9 w-px bg-rule hidden md:block" />
-            <Nav active="/trades" leagueId={view.leagueId} week={week} />
-          </div>
-          <div className="flex items-center gap-2">
-            {leagues.map((l) => (
-              <Link
-                key={l.id}
-                href={`/trades?league=${l.id}&week=${week}`}
-                className={`px-3 py-1.5 border text-[11px] transition-colors ${
-                  l.id === view.leagueId
-                    ? 'border-signal/40 bg-signal/10 text-signal'
-                    : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'
-                }`}
-              >
-                {l.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </header>
+    <main className="min-h-dvh pb-tabbar">
+      <AppHeader
+        eyebrow={`Week ${week} · trade finder`}
+        title={
+          <>
+            Trade <em className="text-signal not-italic">Targets</em>
+          </>
+        }
+        active="/trades"
+        leagues={leagues}
+        activeLeagueId={view.leagueId}
+        week={week}
+      />
 
-      <div className="max-w-[1440px] mx-auto px-6 py-6">
-        <p className="text-[11.5px] text-text-faint max-w-3xl leading-relaxed mb-5 pb-5 border-b border-rule">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <p className="text-[11.5px] text-text-faint max-w-3xl leading-relaxed mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
           Every idea is scored twice — once under your objective and once under the other manager&apos;s, using{' '}
           <em className="not-italic text-text-dim">their</em> posture, roster holes and age profile. Only mutual gains
           are shown, because a proposal the other side declines is worth less than no proposal. Win-now value is the
           change in each team&apos;s optimal starting lineup, re-solved after the trade.
         </p>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-4 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-3 sm:gap-4 items-start">
           <Panel title="Mutually beneficial trades" accent meta={`${view.ideas.length} found`}>
             {view.ideas.length === 0 ? (
               <p className="px-4 py-8 text-[12px] text-text-faint">
@@ -89,7 +71,12 @@ export default async function TradesPage({
 
                     <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center mb-2">
                       <PlayerList label="you send" players={idea.mine.gives} tone="fade" />
-                      <span className="text-text-faint text-[14px] hidden sm:block">⇄</span>
+                      <span className="text-text-faint text-[14px] sm:hidden" aria-hidden="true">
+                        ↓
+                      </span>
+                      <span className="text-text-faint text-[14px] hidden sm:block" aria-hidden="true">
+                        ⇄
+                      </span>
                       <PlayerList label="you get" players={idea.mine.gets} tone="signal" />
                     </div>
 

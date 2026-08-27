@@ -1,8 +1,7 @@
-import Link from 'next/link';
 import { getWaiverView } from '@/lib/data/waivers';
 import { listLeagues } from '@/lib/data/dashboard';
 import { Panel, PositionTag, InjuryTag } from '@/components/primitives';
-import { Nav } from '@/components/Nav';
+import { AppHeader } from '@/components/AppHeader';
 import { RefreshButton } from '@/components/RefreshButton';
 
 export const dynamic = 'force-dynamic';
@@ -19,53 +18,37 @@ export default async function WaiversPage({
 
   if (!view) {
     return (
-      <main className="min-h-screen grid place-items-center">
+      <main className="min-h-dvh grid place-items-center">
         <p className="text-[13px] text-text-dim">No leagues imported yet.</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen">
-      <header className="border-b border-rule">
-        <div className="max-w-[1440px] mx-auto px-6 py-4 flex items-end justify-between gap-8 flex-wrap">
-          <div className="flex items-end gap-5">
-            <div>
-              <div className="eyebrow mb-1">Week {week} · waiver board</div>
-              <h1 className="font-display text-[2rem] leading-none tracking-tight">
-                Add <em className="text-signal not-italic">/</em> Drop
-              </h1>
-            </div>
-            <div className="h-9 w-px bg-rule hidden md:block" />
-            <Nav active="/waivers" leagueId={view.leagueId} week={week} />
-          </div>
+    <main className="min-h-dvh pb-tabbar">
+      <AppHeader
+        eyebrow={`Week ${week} · waiver board`}
+        title={
+          <>
+            Add <em className="text-signal not-italic">/</em> Drop
+          </>
+        }
+        active="/waivers"
+        leagues={leagues}
+        activeLeagueId={view.leagueId}
+        week={week}
+        actions={
+          <RefreshButton
+            leagueId={view.leagueId}
+            week={week}
+            lastSyncedAt={view.lastSyncedAt ? view.lastSyncedAt.toISOString() : null}
+          />
+        }
+      />
 
-          <div className="flex items-center gap-4">
-            <RefreshButton
-              leagueId={view.leagueId}
-              week={week}
-              lastSyncedAt={view.lastSyncedAt ? view.lastSyncedAt.toISOString() : null}
-            />
-            {leagues.map((l) => (
-              <Link
-                key={l.id}
-                href={`/waivers?league=${l.id}&week=${week}`}
-                className={`px-3 py-1.5 border text-[11px] transition-colors ${
-                  l.id === view.leagueId
-                    ? 'border-signal/40 bg-signal/10 text-signal'
-                    : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'
-                }`}
-              >
-                {l.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-[1440px] mx-auto px-6 py-6">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* context strip */}
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 mb-5 pb-5 border-b border-rule">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-x-6 sm:gap-x-8 gap-y-3 mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
           <Bit label="Posture" value={view.posture} tone="signal" />
           <Bit label="Open roster spots" value={String(view.openSlots)} />
           {view.waiverSystem === 'faab' ? (
@@ -78,14 +61,14 @@ export default async function WaiversPage({
             <Bit label="Waiver position" value={view.waiverPosition ? `#${view.waiverPosition}` : '—'} />
           )}
           <Bit label="Free agents scanned" value={view.freeAgentCount.toLocaleString()} />
-          <p className="text-[11px] text-text-faint max-w-md leading-relaxed ml-auto">
+          <p className="col-span-2 text-[11px] text-text-faint sm:max-w-md leading-relaxed sm:ml-auto">
             {view.isDynasty
               ? `Ranked on a ${view.posture} posture — win-now points and future asset value are weighted accordingly.`
               : 'Redraft league: ranked purely on rest-of-season points added to your starting lineup.'}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-4 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-3 sm:gap-4 items-start">
           <Panel title="Recommended moves" accent meta={`${view.suggestions.length} ranked`}>
             {view.suggestions.length === 0 ? (
               <p className="px-4 py-8 text-[12px] text-text-faint">
@@ -99,13 +82,16 @@ export default async function WaiversPage({
                     className="px-4 py-3.5 border-b border-rule/60 last:border-0 rise"
                     style={{ animationDelay: `${i * 28}ms` }}
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="num text-[10px] text-text-faint w-5 pt-1 shrink-0">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-2 sm:gap-3">
+                      <span className="num text-[10px] text-text-faint w-5 pt-1 shrink-0 hidden sm:block">
                         {String(i + 1).padStart(2, '0')}
                       </span>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="num text-[10px] text-text-faint sm:hidden">
+                            {String(i + 1).padStart(2, '0')}
+                          </span>
                           <span className="num text-[9px] px-1.5 py-0.5 border border-signal/30 bg-signal/10 text-signal tracking-wider">
                             ADD
                           </span>
@@ -135,7 +121,7 @@ export default async function WaiversPage({
                         ) : null}
                       </div>
 
-                      <div className="shrink-0 text-right w-[142px] space-y-1.5">
+                      <div className="shrink-0 text-right w-full sm:w-[142px] space-y-1.5 pt-1 sm:pt-0 border-t border-rule/60 sm:border-0">
                         <DualBar winNow={s.score.winNowDelta} future={s.score.futureDelta} isDynasty={view.isDynasty} />
                         {s.bid && s.bid.amount > 0 ? (
                           <div className="flex items-baseline justify-end gap-1.5">
@@ -320,7 +306,7 @@ function Axis({ label, value, max }: { label: string; value: number; max: number
   const width = Math.min(100, (Math.abs(value) / max) * 100);
   return (
     <div className="flex items-center gap-2">
-      <span className="eyebrow w-[38px] text-right">{label}</span>
+      <span className="eyebrow w-[46px] text-right shrink-0">{label}</span>
       <span className="relative flex-1 h-[3px] bg-rule overflow-hidden">
         <span
           className="absolute top-0 h-full"

@@ -1,5 +1,10 @@
 import Link from 'next/link';
 
+/**
+ * Desktop route switcher. On phones `TabBar` takes over — these 11px links
+ * are far too small a target for a thumb, and a bottom bar is the presentation
+ * an iOS user expects for top-level navigation anyway.
+ */
 const TABS = [
   { href: '/', label: 'Dashboard' },
   { href: '/draft', label: 'Draft' },
@@ -15,11 +20,12 @@ export function Nav({ active, leagueId, week }: { active: string; leagueId?: str
   const suffix = query.toString() ? `?${query.toString()}` : '';
 
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="hidden md:flex items-center gap-1">
       {TABS.map((tab) => (
         <Link
           key={tab.href}
           href={`${tab.href}${suffix}`}
+          aria-current={tab.href === active ? 'page' : undefined}
           className={`px-3 py-1.5 text-[11px] border transition-colors ${
             tab.href === active
               ? 'border-rule-bright bg-ink-hover text-text'

@@ -61,7 +61,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
   return (
     <div className="space-y-6">
       {/* --- username --- */}
-      <div className="bg-ink-card border border-rule p-5">
+      <div className="bg-ink-card border border-rule p-4 sm:p-5">
         <label htmlFor="sleeper-username" className="eyebrow block mb-2">
           Sleeper username
         </label>
@@ -76,13 +76,16 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
             placeholder="your sleeper handle"
             spellCheck={false}
             autoComplete="off"
-            className="num flex-1 min-w-[220px] bg-ink border border-rule px-3 py-2 text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-signal/50"
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="search"
+            className="num flex-1 min-w-0 sm:min-w-[220px] bg-ink border border-rule px-3 py-2 min-h-[44px] md:min-h-0 text-[16px] md:text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-signal/50"
           />
           <button
             type="button"
             onClick={search}
             disabled={pending || !username.trim()}
-            className="px-4 py-2 border border-signal/40 bg-signal/10 text-signal text-[12px] transition-colors hover:bg-signal/20 disabled:opacity-40 disabled:cursor-wait"
+            className="press px-4 py-2 min-h-[44px] md:min-h-0 border border-signal/40 bg-signal/10 text-signal text-[12px] transition-colors hover:bg-signal/20 disabled:opacity-40 disabled:cursor-wait"
           >
             {pending && !importing ? 'Searching…' : 'Find leagues'}
           </button>
@@ -177,7 +180,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
                           type="button"
                           onClick={() => doRemove(league.leagueId)}
                           disabled={pending}
-                          className="px-2.5 py-1.5 border border-rule text-[11px] text-text-faint transition-colors hover:border-fade/40 hover:text-fade disabled:opacity-40"
+                          className="press px-2.5 py-1.5 min-h-[44px] md:min-h-0 border border-rule text-[11px] text-text-faint transition-colors hover:border-fade/40 hover:text-fade disabled:opacity-40"
                         >
                           {importing === league.leagueId ? '…' : 'Remove'}
                         </button>
@@ -187,7 +190,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
                         type="button"
                         onClick={() => doImport(league)}
                         disabled={pending || league.myRosterId === null}
-                        className="px-4 py-2 border border-signal/40 bg-signal/10 text-signal text-[12px] transition-colors hover:bg-signal/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="press px-4 py-2 min-h-[44px] md:min-h-0 border border-signal/40 bg-signal/10 text-signal text-[12px] transition-colors hover:bg-signal/20 disabled:opacity-30 disabled:cursor-not-allowed"
                         title={league.myRosterId === null ? 'Your roster was not found in this league' : undefined}
                       >
                         {importing === league.leagueId ? 'Importing…' : 'Import'}
