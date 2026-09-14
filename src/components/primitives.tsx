@@ -86,9 +86,35 @@ export function PositionTag({ position }: { position: string }) {
   );
 }
 
-export function InjuryTag({ status }: { status: string | null }) {
+/**
+ * Status chip. `playStatus` is the resolved verdict from the availability
+ * engine — pass it so a bye shows up here too, and so "critical" means the
+ * same thing on screen as it does in the optimizer.
+ */
+export function InjuryTag({
+  status,
+  playStatus,
+}: {
+  status: string | null;
+  playStatus?: 'active' | 'questionable' | 'doubtful' | 'out' | 'bye';
+}) {
+  if (playStatus === 'bye') {
+    return (
+      <span
+        className="num text-[9px] px-1 py-0.5 border tracking-wider"
+        style={{
+          color: 'var(--color-crit)',
+          borderColor: 'rgba(255,77,106,0.3)',
+          background: 'rgba(255,77,106,0.08)',
+        }}
+      >
+        BYE
+      </span>
+    );
+  }
   if (!status) return null;
-  const critical = /out|ir|injured|pup|suspend/i.test(status);
+  const critical =
+    playStatus === 'out' || playStatus === 'doubtful' || /out|ir|injured|pup|suspend/i.test(status);
   return (
     <span
       className="num text-[9px] px-1 py-0.5 border tracking-wider"

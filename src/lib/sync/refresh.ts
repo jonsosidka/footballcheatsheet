@@ -100,6 +100,10 @@ export async function runDaily(): Promise<RefreshResult> {
 /**
  * Gameday poll. Netlify's scheduler floors at hourly, which is too slow for
  * pre-kickoff inactive news, so this is driven by GitHub Actions cron instead.
+ *
+ * Light by design: the projection endpoints are six requests and carry the
+ * injury tags, so this stays well inside the budget while keeping start/sit
+ * advice current right up to kickoff.
  */
 export async function runGameday(): Promise<RefreshResult> {
   const started = Date.now();
@@ -107,7 +111,22 @@ export async function runGameday(): Promise<RefreshResult> {
   const season = state.league_season;
   const week = Math.max(1, state.display_week ?? state.week ?? 1);
 
-  const oddsCount = await syncGameOdds(season, week);
+  const positions = requiredProjectionPositions(
+    (await db.select({ rp: leagues.rosterPositions }).from(leagues)).map((r) => r.rp),
+  );
+
+  /*
+   * Projections come along on gameday, not just odds.
+   *
+   * The payload carries Sleeper's injury tags, and those tags are the point of
+   * this job: without them the only injury refresh is the once-a-day player
+   * dump, so a Sunday-morning inactive could not reach the lineup advice until
+   * the following day — by which time the zero is already on the scoreboard.
+   */
+  const [projectionCount, oddsCount] = await Promise.all([
+    syncWeeklyProjections(season, week, positions),
+    syncGameOdds(season, week),
+  ]);
   const tracked = await listLeagues();
 
   const alertCounts: Record<string, number> = {};
@@ -117,7 +136,11 @@ export async function runGameday(): Promise<RefreshResult> {
   }
 
   await markSynced('gameday', `week ${week}`);
-  return { job: 'gameday', ms: Date.now() - started, detail: { week, oddsCount, alertCounts } };
+  return {
+    job: 'gameday',
+    ms: Date.now() - started,
+    detail: { week, projectionCount, oddsCount, alertCounts },
+  };
 }
 
 /**
@@ -130,10 +153,22 @@ export async function refreshAlerts(leagueId: string, week: number): Promise<num
   const dashboard = await getDashboard(leagueId, week);
   if (!dashboard || !dashboard.hasRoster) return 0;
 
-  const startingIds = new Set(dashboard.lineup.map((s) => s.player?.playerId).filter(Boolean) as string[]);
-  const roster = [...dashboard.lineup.map((s) => s.player), ...dashboard.bench].filter(
-    (p): p is NonNullable<typeof p> => !!p,
-  );
+  /*
+   * Alert against the lineup the manager ACTUALLY has set, not the optimal one.
+   *
+   * These were previously keyed off `dashboard.lineup`, which is the optimizer's
+   * answer — so "you are starting a player who is out" could never fire, because
+   * the optimizer never starts one. The whole point of the alert is the gap
+   * between what is set and what should be.
+   */
+  const startingIds = new Set(dashboard.currentStarters.map((p) => p.playerId));
+  const roster = [
+    ...new Map(
+      [...dashboard.currentStarters, ...dashboard.lineup.map((s) => s.player), ...dashboard.bench]
+        .filter((p): p is NonNullable<typeof p> => !!p)
+        .map((p) => [p.playerId, p] as const),
+    ).values(),
+  ];
 
   // Most recent snapshot per player, to diff against.
   const previous = await db
@@ -157,7 +192,8 @@ export async function refreshAlerts(leagueId: string, week: number): Promise<num
     name: player.name,
     position: player.position,
     injuryStatus: player.injuryStatus,
-    status: null,
+    status: player.status,
+    byeWeek: player.byeWeek,
     points: player.points,
     previousPoints: previousByPlayer.get(player.playerId) ?? null,
     isStarting: startingIds.has(player.playerId),

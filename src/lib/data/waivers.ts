@@ -6,6 +6,7 @@ import { projectPlayers, type TeamOdds } from '@/lib/engine/pipeline';
 import { optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
 import { evaluatePosture } from '@/lib/engine/value';
 import { computeOccupancy } from '@/lib/engine/roster';
+import { weeklyAvailability } from '@/lib/engine/availability';
 import { rankWaiverTargets, computeNeeds, partitionSuggestions, type WaiverCandidate, type WaiverSuggestion, type PositionalNeed } from '@/lib/engine/waivers';
 import { shapeFromLeague, shapeKey } from '@/lib/sources/fantasycalc';
 import { getTrending } from '@/lib/sources/sleeper';
@@ -110,11 +111,18 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
         position: player?.position ?? 'UNK',
         team: proj.team ?? player?.team ?? null,
         stats: proj.stats,
+        availability: weeklyAvailability({
+          status: player?.status ?? null,
+          injuryStatus: player?.injuryStatus ?? null,
+          byeWeek: player?.byeWeek ?? null,
+          week,
+        }),
       };
     }),
     { scoring: league.scoringSettings, oddsByTeam },
   );
   const weekPointsById = new Map(weekProjected.map((p) => [p.playerId, p.points]));
+  const startableById = new Map(weekProjected.map((p) => [p.playerId, p.startable]));
 
   const toCandidate = (id: string): WaiverCandidate | null => {
     const player = playerById.get(id);
@@ -156,6 +164,8 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
           position: player?.position ?? 'UNK',
           eligiblePositions: player?.fantasyPositions ?? [player?.position ?? 'UNK'],
           points: weekPointsById.get(id) ?? 0,
+          // A roster full of injured stars is not a strong roster this week.
+          ineligible: startableById.get(id) === false,
         };
       });
     return optimizeLineup(pool, league.rosterPositions).totalPoints;

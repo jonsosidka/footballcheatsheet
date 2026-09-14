@@ -109,6 +109,36 @@ export default async function DashboardPage({
           {/* ---------------- main grid ---------------- */}
           <div className="grid grid-cols-1 xl:grid-cols-[1.55fr_1fr] gap-3 sm:gap-4 items-start">
             <div className="space-y-3 sm:space-y-4">
+              {data.doNotStart.length > 0 ? (
+                <Panel
+                  title="Do not start"
+                  meta={`${data.doNotStart.length} in your lineup`}
+                >
+                  <ul>
+                    {data.doNotStart.map((p) => (
+                      <li
+                        key={p.playerId}
+                        className="px-4 py-3 border-b border-rule/60 last:border-0"
+                        style={{ borderLeft: '2px solid var(--color-crit)' }}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <PositionTag position={p.position} />
+                          <span className="text-[13px]">{p.name}</span>
+                          <InjuryTag status={p.injuryStatus} playStatus={p.playStatus} />
+                          <span className="num ml-auto text-[13px]" style={{ color: 'var(--color-crit)' }}>
+                            0.0
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-text-faint leading-relaxed">
+                          {p.availabilityNote ?? 'He will not play this week.'}
+                          {' '}You have him in your lineup right now — swap him out before kickoff.
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </Panel>
+              ) : null}
+
               <Panel
                 title="Optimal lineup"
                 accent
@@ -129,7 +159,10 @@ export default async function DashboardPage({
                           {slot.player ? (
                             <div className="flex items-center gap-2 min-w-0">
                               <span className="text-[13px] truncate">{slot.player.name}</span>
-                              <InjuryTag status={slot.player.injuryStatus} />
+                              <InjuryTag
+                                status={slot.player.injuryStatus}
+                                playStatus={slot.player.playStatus}
+                              />
                             </div>
                           ) : (
                             <span className="text-[13px] text-text-faint italic">empty</span>
@@ -189,6 +222,13 @@ export default async function DashboardPage({
                         <span className="text-text-dim line-through decoration-fade/50">
                           {c.outgoing?.name ?? 'empty'}
                         </span>
+                        {c.outgoing && !c.outgoing.startable ? (
+                          <span className="num text-[10px]" style={{ color: 'var(--color-crit)' }}>
+                            {c.outgoing.playStatus === 'bye'
+                              ? 'BYE'
+                              : (c.outgoing.injuryStatus ?? 'OUT').toUpperCase()}
+                          </span>
+                        ) : null}
                         <span className="num ml-auto text-signal">+{c.gain.toFixed(1)}</span>
                       </li>
                     ))}
@@ -202,6 +242,7 @@ export default async function DashboardPage({
                     <div key={p.playerId} className="flex items-center gap-2 py-1 text-[12px] min-w-0">
                       <PositionTag position={p.position} />
                       <span className="truncate text-text-dim">{p.name}</span>
+                      <InjuryTag status={p.injuryStatus} playStatus={p.playStatus} />
                       <span className="num text-[11px] text-text-faint ml-auto">{p.points.toFixed(1)}</span>
                     </div>
                   ))}
@@ -364,7 +405,7 @@ function StashRow({ player, tag }: { player: DashboardPlayer; tag: string }) {
       <span className="num text-[9px] px-1 py-0.5 border border-rule-bright text-text-faint">{tag}</span>
       <PositionTag position={player.position} />
       <span className="truncate text-text-dim">{player.name}</span>
-      <InjuryTag status={player.injuryStatus} />
+      <InjuryTag status={player.injuryStatus} playStatus={player.playStatus} />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { projectPlayers, explainLayers, type TeamOdds, type ProjectedPlayer } fr
 import { compareToCurrentLineup, optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
 import { computeOccupancy, findSlotMoves, type RosterPlayerInfo, type SlotMove } from '@/lib/engine/roster';
 import { evaluatePosture, adjustedDynastyValue, ageMultiplier, type PostureResult } from '@/lib/engine/value';
+import { weeklyAvailability, type Availability, type PlayStatus } from '@/lib/engine/availability';
 import { shapeFromLeague, shapeKey } from '@/lib/sources/fantasycalc';
 
 /**
@@ -39,6 +40,17 @@ export interface DashboardPlayer {
   impliedTeamPoints: number | null;
   spread: number | null;
   injuryStatus: string | null;
+  /** Sleeper's roster status: Active, Injured Reserve, PUP, ... */
+  status: string | null;
+  /** Resolved injury/bye verdict for the week. */
+  playStatus: PlayStatus;
+  /** Projection before the availability haircut. */
+  healthyPoints: number;
+  /** False when he must not be started: ruled out, or on bye. */
+  startable: boolean;
+  /** Why his projection was cut, null when it wasn't. */
+  availabilityNote: string | null;
+  byeWeek: number | null;
   age: number | null;
   dynastyValue: number | null;
   adjustedValue: number | null;
@@ -78,6 +90,15 @@ export interface Dashboard {
   bench: DashboardPlayer[];
   taxi: DashboardPlayer[];
   reserve: DashboardPlayer[];
+
+  /** Sleeper's current starters, in slot order — what you have set right now. */
+  currentStarters: DashboardPlayer[];
+  /**
+   * Players you are currently starting who will not play. The single most
+   * expensive mistake available, so it gets its own list rather than being
+   * left for the reader to spot in the lineup table.
+   */
+  doNotStart: DashboardPlayer[];
 
   movers: DashboardPlayer[];
   occupancy: ReturnType<typeof computeOccupancy>;
@@ -184,6 +205,21 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
   };
 
   /*
+   * Whether each player is actually playing this week. Resolved once here and
+   * handed to the pipeline, so the projection, the optimizer and the alerts
+   * cannot disagree about it.
+   */
+  const availabilityOf = (id: string): Availability => {
+    const player = playerById.get(id);
+    return weeklyAvailability({
+      status: player?.status ?? null,
+      injuryStatus: player?.injuryStatus ?? null,
+      byeWeek: player?.byeWeek ?? null,
+      week,
+    });
+  };
+
+  /*
    * Project EVERY player with a weekly projection, not just rostered ones.
    *
    * The market layer normalizes against the league-wide median of
@@ -202,6 +238,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
         position: player?.position ?? 'UNK',
         team: proj.team ?? player?.team ?? null,
         stats: proj.stats,
+        availability: availabilityOf(id),
       };
     }),
     { scoring: leagueRow.scoringSettings, oddsByTeam },
@@ -214,6 +251,10 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     const value = valueById.get(id);
     const position = player?.position ?? 'UNK';
     const mult = ageMultiplier(position, player?.age ?? null);
+    // Resolved directly rather than read off `proj`, because a player with no
+    // projection row at all still needs a verdict — a bye or an IR stint is
+    // often precisely why the row is missing.
+    const availability = availabilityOf(id);
 
     return {
       playerId: id,
@@ -229,6 +270,12 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       impliedTeamPoints: proj?.impliedTeamPoints ?? null,
       spread: proj?.spread ?? null,
       injuryStatus: player?.injuryStatus ?? null,
+      status: player?.status ?? null,
+      playStatus: availability.playStatus,
+      healthyPoints: proj?.healthyPoints ?? 0,
+      startable: availability.startable,
+      availabilityNote: proj?.availabilityNote ?? availability.reason,
+      byeWeek: player?.byeWeek ?? null,
       age: player?.age ?? null,
       dynastyValue: value?.dynastyValue ?? null,
       adjustedValue: value?.dynastyValue
@@ -268,6 +315,8 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       bench: [],
       taxi: [],
       reserve: [],
+      currentStarters: [],
+      doNotStart: [],
       movers: [],
       occupancy: computeOccupancy(slotConfigOf(leagueRow), { players: [], taxi: [], reserve: [] }),
       slotMoves: [],
@@ -288,12 +337,16 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     .filter((id) => !taxiSet.has(id) && !reserveSet.has(id))
     .map((id) => {
       const player = playerById.get(id);
+      const proj = projectedById.get(id);
       return {
         playerId: id,
         position: player?.position ?? 'UNK',
         eligiblePositions: player?.fantasyPositions ?? [player?.position ?? 'UNK'],
-        points: projectedById.get(id)?.points ?? 0,
-        ineligible: !projectedById.has(id),
+        points: proj?.points ?? 0,
+        // No projection at all, or ruled out / on bye. Either way he cannot be
+        // the answer at a starting slot, so keep him out of the assignment
+        // rather than letting a stale full-strength projection start him.
+        ineligible: !proj || !proj.startable,
       };
     });
 
@@ -315,6 +368,17 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     .map(toDashboardPlayer)
     .sort((a, b) => b.points - a.points);
 
+  /*
+   * What the manager actually has set, as opposed to what we'd set. Sleeper's
+   * starters array is positionally aligned with the league's starting slots
+   * and uses "0" for an empty one.
+   */
+  const currentStarters = (mine.starters ?? [])
+    .filter((id) => id && id !== '0')
+    .map(toDashboardPlayer);
+
+  const doNotStart = currentStarters.filter((p) => !p.startable);
+
   const movers = (mine.players ?? [])
     .map(toDashboardPlayer)
     .filter((p) => p.marketDelta !== null && Math.abs(p.marketDelta) > 0.15)
@@ -329,11 +393,14 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       .filter((id) => !rTaxi.has(id) && !rReserve.has(id))
       .map((id) => {
         const player = playerById.get(id);
+        const proj = projectedById.get(id);
         return {
           playerId: id,
           position: player?.position ?? 'UNK',
           eligiblePositions: player?.fantasyPositions ?? [player?.position ?? 'UNK'],
-          points: projectedById.get(id)?.points ?? 0,
+          points: proj?.points ?? 0,
+          // Same rule as my own lineup: a rival's out player is not strength.
+          ineligible: !!proj && !proj.startable,
         };
       });
     return optimizeLineup(pool, leagueRow.rosterPositions).totalPoints;
@@ -412,6 +479,8 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     bench,
     taxi: (mine.taxi ?? []).map(toDashboardPlayer),
     reserve: (mine.reserve ?? []).map(toDashboardPlayer),
+    currentStarters,
+    doNotStart,
     movers,
     occupancy: computeOccupancy(slotConfig, rosterShape),
     slotMoves: findSlotMoves(slotConfig, rosterShape, rosterInfo, week),

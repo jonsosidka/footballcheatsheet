@@ -9,6 +9,8 @@
  * than duplicates.
  */
 
+import { isOutStatus, isOnBye } from './availability';
+
 export type AlertType =
   | 'injury-change'
   | 'projection-move'
@@ -37,11 +39,11 @@ export interface AlertPlayer {
   points: number;
   /** Previously recorded league-scored projection, if we have one. */
   previousPoints: number | null;
+  /** True when he is in the manager's CURRENT lineup — not the optimal one. */
   isStarting: boolean;
+  /** His team's bye week, when known. */
+  byeWeek?: number | null;
 }
-
-/** Statuses that mean the player will not play. */
-const NOT_PLAYING = new Set(['Out', 'IR', 'Injured Reserve', 'PUP', 'Suspended', 'NFI', 'DNP']);
 
 export interface AlertInput {
   week: number;
@@ -65,22 +67,21 @@ export function buildAlerts(input: AlertInput): Alert[] {
 
   for (const player of input.players) {
     // A starter who is not going to play is the single most costly mistake.
-    if (player.isStarting && isNotPlaying(player)) {
+    if (player.isStarting && isNotPlaying(player, week)) {
+      const reason = notPlayingReason(player, week);
       alerts.push({
         type: 'starting-inactive',
         severity: 'critical',
         playerId: player.playerId,
         week,
-        title: `${player.name} is ${player.injuryStatus ?? player.status} and in your lineup`,
-        body: `You are starting ${player.name} (${player.position}) but he is listed ${
-          player.injuryStatus ?? player.status
-        }. Replace him before kickoff or you take a zero.`,
+        title: `Bench ${player.name} — ${reason}`,
+        body: `You are starting ${player.name} (${player.position}) but he is ${reason}. Replace him before kickoff or you take a zero.`,
         dedupeKey: `inactive:${week}:${player.playerId}`,
       });
       continue;
     }
 
-    if (player.isStarting && player.injuryStatus && !isNotPlaying(player)) {
+    if (player.isStarting && player.injuryStatus && !isNotPlaying(player, week)) {
       alerts.push({
         type: 'injury-change',
         severity: 'warn',
@@ -158,9 +159,26 @@ export function buildAlerts(input: AlertInput): Alert[] {
   return alerts.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
-function isNotPlaying(player: AlertPlayer): boolean {
+/**
+ * Delegates to the availability engine so an alert can never disagree with the
+ * lineup optimizer about whether a player is playing. Byes count: a starter on
+ * bye takes the same zero as a starter on IR.
+ */
+function isNotPlaying(player: AlertPlayer, week: number): boolean {
   return (
-    (player.injuryStatus !== null && NOT_PLAYING.has(player.injuryStatus)) ||
-    (player.status !== null && NOT_PLAYING.has(player.status))
+    isOutStatus(player.injuryStatus) ||
+    isOutStatus(player.status) ||
+    isOnBye(player.byeWeek, week)
   );
+}
+
+/**
+ * Name the reason, resolved in the same order as the availability engine, so
+ * the alert and the projection never describe the same player differently.
+ */
+function notPlayingReason(player: AlertPlayer, week: number): string {
+  if (isOnBye(player.byeWeek, week)) return `on bye in week ${week}`;
+  if (isOutStatus(player.injuryStatus)) return `listed ${player.injuryStatus}`;
+  if (isOutStatus(player.status)) return `listed ${player.status}`;
+  return 'unavailable';
 }

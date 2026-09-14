@@ -8,12 +8,13 @@ import {
   pickValues,
   syncState,
 } from '@/db/schema';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, inArray } from 'drizzle-orm';
 import {
   getAllPlayers,
   getWeeklyProjections,
   getSeasonProjections,
   hasRealProjection,
+  type SleeperProjection,
 } from '@/lib/sources/sleeper';
 import { getWeekGameLines, SEASON_TYPE } from '@/lib/sources/espn-odds';
 import { getValues, shapeKey, type LeagueShape } from '@/lib/sources/fantasycalc';
@@ -115,6 +116,63 @@ export async function syncPlayers(): Promise<number> {
   return deduped.length;
 }
 
+/**
+ * Refresh injury tags from a projection payload.
+ *
+ * The 14MB player dump is the canonical source, but Sleeper asks that it be
+ * pulled at most once a day — far too slow for Friday practice reports and
+ * Sunday inactives, which is the entire reason the gameday job exists. The
+ * projection rows carry the same tag on an endpoint we already call hourly,
+ * so statuses ride along for free.
+ *
+ * Reads the RAW payload rather than the filtered one on purpose: a player who
+ * has just been ruled out is exactly the player whose stat line gets zeroed
+ * and dropped by hasRealProjection, and he is the one we most need to update.
+ *
+ * Returns how many rows carried a status and how many players changed, so a
+ * payload that stops carrying the nested player object shows up in sync_state
+ * instead of silently freezing every injury tag at yesterday's value.
+ */
+export async function applyInjuryStatuses(
+  raw: SleeperProjection[],
+): Promise<{ seen: number; changed: number }> {
+  const incoming = new Map<string, string | null>();
+  for (const projection of raw) {
+    if (!projection.player) continue;
+    incoming.set(projection.player_id, projection.player.injury_status ?? null);
+  }
+  if (incoming.size === 0) return { seen: 0, changed: 0 };
+
+  const ids = [...incoming.keys()];
+  const current = await db
+    .select({ id: players.id, injuryStatus: players.injuryStatus })
+    .from(players)
+    .where(inArray(players.id, ids));
+
+  // Group by the new value so this is a handful of UPDATEs, not hundreds.
+  // Clearing a tag matters as much as setting one: a player who practiced
+  // fully on Friday has to stop being discounted.
+  const byStatus = new Map<string | null, string[]>();
+  for (const row of current) {
+    const next = incoming.get(row.id);
+    if (next === undefined || next === row.injuryStatus) continue;
+    const list = byStatus.get(next);
+    if (list) list.push(row.id);
+    else byStatus.set(next, [row.id]);
+  }
+
+  let changed = 0;
+  for (const [status, changedIds] of byStatus) {
+    await db
+      .update(players)
+      .set({ injuryStatus: status, syncedAt: new Date() })
+      .where(inArray(players.id, changedIds));
+    changed += changedIds.length;
+  }
+
+  return { seen: incoming.size, changed };
+}
+
 export async function syncWeeklyProjections(
   season: string,
   week: number,
@@ -153,7 +211,12 @@ export async function syncWeeklyProjections(
       }),
   );
 
-  await markSynced(`projections:${season}:${week}`, `${deduped.length} projections`);
+  const injuries = await applyInjuryStatuses(raw);
+
+  await markSynced(
+    `projections:${season}:${week}`,
+    `${deduped.length} projections · ${injuries.changed} injury changes from ${injuries.seen} tagged rows`,
+  );
   return deduped.length;
 }
 

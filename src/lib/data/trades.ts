@@ -14,6 +14,7 @@ import { eq, and } from 'drizzle-orm';
 import { scoreProjection } from '@/lib/engine/scoring';
 import { projectPlayers, type TeamOdds } from '@/lib/engine/pipeline';
 import { optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
+import { weeklyAvailability } from '@/lib/engine/availability';
 import { evaluatePosture } from '@/lib/engine/value';
 import { computeNeeds, type WaiverCandidate } from '@/lib/engine/waivers';
 import { findTrades, lineupStrength, type TradeIdea, type TradePlayer, type TradeTeam } from '@/lib/engine/trades';
@@ -86,11 +87,18 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
         position: player?.position ?? 'UNK',
         team: proj.team ?? player?.team ?? null,
         stats: proj.stats,
+        availability: weeklyAvailability({
+          status: player?.status ?? null,
+          injuryStatus: player?.injuryStatus ?? null,
+          byeWeek: player?.byeWeek ?? null,
+          week,
+        }),
       };
     }),
     { scoring: league.scoringSettings, oddsByTeam },
   );
   const weekPoints = new Map(weekProjected.map((p) => [p.playerId, p.points]));
+  const startable = new Map(weekProjected.map((p) => [p.playerId, p.startable]));
 
   const toTradePlayer = (id: string): TradePlayer | null => {
     const player = playerById.get(id);
@@ -121,6 +129,9 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
           position: player?.position ?? 'UNK',
           eligiblePositions: player?.fantasyPositions ?? [player?.position ?? 'UNK'],
           points: weekPoints.get(id) ?? 0,
+          // Posture reads the same strength the dashboard does, so an injured
+          // rival is not mistaken for a contender.
+          ineligible: startable.get(id) === false,
         };
       });
     return optimizeLineup(pool, league.rosterPositions).totalPoints;
@@ -177,7 +188,7 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
       dynastyValue: p.dynastyValue,
       trend30Day: null,
       trendingAdds: 0,
-      injuryStatus: null,
+      injuryStatus: playerById.get(p.playerId)?.injuryStatus ?? null,
     }));
 
     const needs = new Map<string, number>();

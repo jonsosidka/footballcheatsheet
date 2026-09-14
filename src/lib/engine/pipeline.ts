@@ -1,5 +1,6 @@
 import type { ScoringSettings, StatLine } from '@/db/schema';
 import { scoreProjection } from './scoring';
+import { FULLY_AVAILABLE, type Availability, type PlayStatus } from './availability';
 import {
   applyMarketLayer,
   applyPropLayer,
@@ -11,12 +12,18 @@ import {
 } from './market';
 
 /**
- * Assemble the three projection layers into a single league-scored number.
+ * Assemble the three projection layers into a single league-scored number,
+ * then apply the availability haircut.
  *
  * Layer 1 (base) always exists. Layers 2 and 3 are applied where the data
  * supports them and are simply absent otherwise — a player with no game line
  * and no props still gets a usable projection, which is what keeps waiver-wire
  * coverage complete.
+ *
+ * Availability is not a layer in the same sense: it is a multiplier applied
+ * last, to whatever the layers produced. A player who is out scores zero
+ * regardless of how good his matchup is, so it has to sit outside the blend
+ * rather than argue with it inside.
  */
 
 /**
@@ -59,6 +66,12 @@ export interface PlayerProjectionInput {
   team: string | null;
   stats: StatLine;
   props?: PropInput[];
+  /**
+   * Injury/bye status for the week. Omitted means "no reason to doubt him" —
+   * callers that know the status are expected to pass it, since a missing
+   * status and a healthy one are indistinguishable here by design.
+   */
+  availability?: Availability;
 }
 
 export interface ProjectedPlayer {
@@ -66,8 +79,10 @@ export interface ProjectedPlayer {
   position: string;
   team: string | null;
   opponent: string | null;
-  /** Final blended, league-scored projection. */
+  /** Final blended, league-scored projection, after the availability cut. */
   points: number;
+  /** What he would be projected for if he were healthy and playing. */
+  healthyPoints: number;
   basePoints: number;
   marketPoints: number | null;
   propPoints: number | null;
@@ -75,6 +90,13 @@ export interface ProjectedPlayer {
   layers: Array<'base' | 'market' | 'props'>;
   impliedTeamPoints: number | null;
   spread: number | null;
+  playStatus: PlayStatus;
+  /** The fraction of `healthyPoints` that survived. */
+  availabilityMultiplier: number;
+  /** False for ruled-out and bye players: never put him in a starting slot. */
+  startable: boolean;
+  /** Why the projection was cut, null when it wasn't. */
+  availabilityNote: string | null;
 }
 
 export interface PipelineOptions {
@@ -162,7 +184,14 @@ export function projectPlayers(
     const weights =
       options.weightsByPosition?.get(input.position) ?? options.weights ?? DEFAULT_WEIGHTS;
 
-    const points = blend({ base: basePoints, market: marketPoints, props: propPoints }, weights);
+    const healthyPoints = blend(
+      { base: basePoints, market: marketPoints, props: propPoints },
+      weights,
+    );
+
+    // --- Availability: applied last, to the blended number ------------------
+    const availability = input.availability ?? FULLY_AVAILABLE;
+    const points = round2(healthyPoints * availability.multiplier);
 
     return {
       playerId: input.playerId,
@@ -170,14 +199,23 @@ export function projectPlayers(
       team: input.team,
       opponent: odds?.opponent ?? null,
       points,
+      healthyPoints,
       basePoints,
       marketPoints,
       propPoints,
       layers,
       impliedTeamPoints: odds?.impliedPoints ?? null,
       spread: odds?.spread ?? null,
+      playStatus: availability.playStatus,
+      availabilityMultiplier: availability.multiplier,
+      startable: availability.startable,
+      availabilityNote: availability.reason,
     };
   });
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -185,6 +223,16 @@ export function projectPlayers(
  * Returns null when only the base layer was available — there's nothing to say.
  */
 export function explainLayers(player: ProjectedPlayer): string | null {
+  // Availability is the headline when it applies — it explains the number far
+  // more than a 0.3-point matchup nudge ever does.
+  if (player.availabilityNote !== null) {
+    const cut =
+      player.availabilityMultiplier === 0
+        ? `${player.healthyPoints.toFixed(1)} projected if he played, but he is not.`
+        : `Cut from ${player.healthyPoints.toFixed(1)} to ${player.points.toFixed(1)}.`;
+    return `${player.availabilityNote} ${cut}`;
+  }
+
   if (player.layers.length <= 1) return null;
 
   const parts: string[] = [`Base projection ${player.basePoints.toFixed(1)}.`];
