@@ -1,7 +1,7 @@
 import type { ScoringSettings, StatLine } from '@/db/schema';
 import { scoreProjection } from './scoring';
 import { FULLY_AVAILABLE, type Availability, type PlayStatus } from './availability';
-import { findPromotions, applyPromotion, type Promotion } from './vacancy';
+import { findPromotions, applyPromotion, type Promotion, type VacancyCandidate } from './vacancy';
 import {
   applyMarketLayer,
   applyPropLayer,
@@ -73,6 +73,16 @@ export interface PlayerProjectionInput {
    * status and a healthy one are indistinguishable here by design.
    */
   availability?: Availability;
+  /**
+   * The week's opening stat line for this player, if we have it. Scored with
+   * the same league settings as `stats`, it tells the vacancy layer how far
+   * the feed has already moved him since the week began.
+   */
+  openingStats?: StatLine | null;
+  /** When that opening line was published. */
+  openedAt?: Date | null;
+  /** When this player's injury status last changed value. */
+  statusChangedAt?: Date | null;
 }
 
 export interface ProjectedPlayer {
@@ -225,7 +235,24 @@ export function projectPlayers(
    * ahead of him is out. Runs after availability for the same reason — the
    * absence has to be resolved before the opening exists.
    */
-  const promotions = findPromotions(projected);
+  const candidates: VacancyCandidate[] = projected.map((player, index) => {
+    const input = inputs[index];
+    return {
+      playerId: player.playerId,
+      position: player.position,
+      team: player.team,
+      healthyPoints: player.healthyPoints,
+      startable: player.startable,
+      playStatus: player.playStatus,
+      // Scored here rather than upstream so the comparison is in the same
+      // league points as everything else on the page.
+      openingPoints: input.openingStats ? scoreProjection(input.openingStats, scoring) : null,
+      openedAt: input.openedAt ?? null,
+      statusChangedAt: input.statusChangedAt ?? null,
+    };
+  });
+
+  const promotions = findPromotions(candidates);
   if (promotions.size === 0) return projected;
 
   for (const player of projected) {
@@ -253,7 +280,7 @@ export function explainLayers(player: ProjectedPlayer): string | null {
   if (player.promotion !== null) {
     return (
       `${player.promotion.reason} Projection raised from ${player.healthyPoints.toFixed(1)} to ` +
-      `${player.points.toFixed(1)} — players promoted into this role have historically scored ` +
+      `${player.points.toFixed(1)}; players promoted into this role have historically scored ` +
       `${Math.round((player.promotion.multiplier - 1) * 100)}% more.`
     );
   }

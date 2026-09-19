@@ -129,6 +129,13 @@ export const players = pgTable(
     yearsExp: integer('years_exp'),
     status: text('status'),
     injuryStatus: text('injury_status'),
+    /**
+     * When injuryStatus last actually changed value — not when it was last
+     * written. Tells the vacancy layer whether the projection feed could
+     * possibly have known about an absence when it published this week's
+     * line, which is the difference between an edge and a double count.
+     */
+    injuryStatusChangedAt: timestamp('injury_status_changed_at'),
     injuryBodyPart: text('injury_body_part'),
     injuryNotes: text('injury_notes'),
     depthChartPosition: text('depth_chart_position'),
@@ -162,6 +169,15 @@ export const projections = pgTable(
     source: text('source').notNull().default('sleeper'),
     /** Full component stat line, scored per-league downstream. */
     stats: jsonb('stats').$type<StatLine>().notNull(),
+    /**
+     * The week's OPENING line: the first stat line we ever saw for this
+     * player-week, never overwritten. `stats` moves all week as the feed
+     * reacts to news; the gap between the two is exactly how much of a role
+     * change the feed has already priced in.
+     */
+    openingStats: jsonb('opening_stats').$type<StatLine>(),
+    /** When that opening line was captured. */
+    openedAt: timestamp('opened_at'),
     opponent: text('opponent'),
     team: text('team'),
     gameId: text('game_id'),

@@ -117,6 +117,9 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
           byeWeek: player?.byeWeek ?? null,
           week,
         }),
+        openingStats: proj.openingStats,
+        openedAt: proj.openedAt,
+        statusChangedAt: player?.injuryStatusChangedAt ?? null,
       };
     }),
     { scoring: league.scoringSettings, oddsByTeam },

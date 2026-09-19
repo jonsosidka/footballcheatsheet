@@ -247,6 +247,9 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
         team: proj.team ?? player?.team ?? null,
         stats: proj.stats,
         availability: availabilityOf(id),
+        openingStats: proj.openingStats,
+        openedAt: proj.openedAt,
+        statusChangedAt: player?.injuryStatusChangedAt ?? null,
       };
     }),
     { scoring: leagueRow.scoringSettings, oddsByTeam },

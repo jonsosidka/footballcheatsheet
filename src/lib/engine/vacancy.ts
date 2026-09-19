@@ -44,6 +44,17 @@ export interface VacancyCandidate {
   /** False for ruled-out and bye players. */
   startable: boolean;
   playStatus: PlayStatus;
+  /**
+   * This player's projection as the week OPENED, league-scored. The feed moves
+   * `healthyPoints` all week as news lands; the gap between the two is how
+   * much of a role change it has already priced in. Null when we have no
+   * history for the week yet.
+   */
+  openingPoints?: number | null;
+  /** When that opening line was published. */
+  openedAt?: Date | null;
+  /** When this player's injury status last changed value. */
+  statusChangedAt?: Date | null;
 }
 
 export interface Promotion {
@@ -53,6 +64,10 @@ export interface Promotion {
   vacatedBy: string;
   /** Ceiling: a promoted backup cannot out-project the man he replaced. */
   cappedPoints: number;
+  /** Points the feed has ALREADY added since the week opened. */
+  claimedByFeed: number;
+  /** Points of the measured lift still unclaimed — what we actually add. */
+  unclaimed: number;
   reason: string;
 }
 
@@ -97,13 +112,83 @@ export function findPromotions(candidates: VacancyCandidate[]): Map<string, Prom
     if (starter.healthyPoints < MIN_STARTER_POINTS) continue;
 
     const multiplier = PROMOTION_MULTIPLIERS[backup.position];
+
+    /*
+     * How much of the lift has the feed already taken?
+     *
+     * Rotowire prices a known absence in when it publishes. Adding the full
+     * measured multiplier on top of a line that already assumes the backup is
+     * starting counts the same promotion twice and can hand a committee back a
+     * number no projection supports. Only the unclaimed remainder is ours.
+     */
+    const opening = backup.openingPoints;
+
+    // No history for the week yet — a fresh install, or the first sync of the
+    // week. Fall back to the raw multiplier, which is the behaviour before
+    // any of this existed, and say so in the reason.
+    if (opening === null || opening === undefined || opening <= 0) {
+      promotions.set(backup.playerId, {
+        playerId: backup.playerId,
+        multiplier,
+        vacatedBy: starter.playerId,
+        cappedPoints: starter.healthyPoints,
+        claimedByFeed: 0,
+        unclaimed: backup.healthyPoints * (multiplier - 1),
+        reason: `Promoted: the ${backup.position} ahead of him is out, worth ${starter.healthyPoints.toFixed(1)}.`,
+      });
+      continue;
+    }
+
+    /*
+     * The feed already knew.
+     *
+     * If the starter's status flipped BEFORE this week's line was published,
+     * the opening line was written with the absence in hand — the backup is
+     * already projected as the starter and there is nothing left to claim.
+     * This is the long-term-injury case: a back on IR since October vacates
+     * nothing new in December.
+     */
+    if (
+      starter.statusChangedAt &&
+      backup.openedAt &&
+      starter.statusChangedAt.getTime() <= backup.openedAt.getTime()
+    ) {
+      continue;
+    }
+
+    /*
+     * A third guard, for when the timestamps cannot settle it — a mid-week
+     * install whose first captured line already postdates the news, so there
+     * is no statusChangedAt to compare against.
+     *
+     * Whatever the clock says, a backup whose OPENING line already sits near
+     * the starter's is a man the feed is already treating as the lead back.
+     * There is no promotion left to hand him.
+     */
+    if (opening >= starter.healthyPoints * ALREADY_LEAD_SHARE) continue;
+
+    const claimedByFeed = Math.max(0, backup.healthyPoints - opening);
+    const expectedLift = opening * (multiplier - 1);
+    const unclaimed = Math.max(0, expectedLift - claimedByFeed);
+
+    // The feed has taken all of it (or more). Nothing to add, and saying
+    // "promoted" over a zero-point adjustment would be noise.
+    if (unclaimed <= 0) continue;
+
     promotions.set(backup.playerId, {
       playerId: backup.playerId,
       multiplier,
       vacatedBy: starter.playerId,
       // He steps into the role, he does not become better than it.
       cappedPoints: starter.healthyPoints,
-      reason: `Promoted: the ${backup.position} ahead of him is out, worth ${starter.healthyPoints.toFixed(1)}.`,
+      claimedByFeed: round2(claimedByFeed),
+      unclaimed: round2(unclaimed),
+      reason:
+        claimedByFeed > 0.5
+          ? `Promoted: the ${backup.position} ahead of him is out, worth ${starter.healthyPoints.toFixed(1)}. ` +
+            `The feed has already moved him ${claimedByFeed.toFixed(1)}; this adds the remaining ${round2(unclaimed).toFixed(1)}.`
+          : `Promoted: the ${backup.position} ahead of him is out, worth ${starter.healthyPoints.toFixed(1)}, ` +
+            `and the feed has not moved his projection yet.`,
     });
   }
 
@@ -111,12 +196,17 @@ export function findPromotions(candidates: VacancyCandidate[]): Map<string, Prom
 }
 
 /**
- * Points a promoted player is worth: his own projection scaled by the measured
- * multiplier, but never more than the starter he is replacing.
+ * Points a promoted player is worth: his current projection plus only the part
+ * of the measured lift the feed has not already applied, and never more than
+ * the starter he is replacing.
  */
 export function applyPromotion(healthyPoints: number, promotion: Promotion): number {
-  const promoted = healthyPoints * promotion.multiplier;
-  return Math.round(Math.min(promoted, promotion.cappedPoints) * 100) / 100;
+  const promoted = healthyPoints + promotion.unclaimed;
+  return round2(Math.min(promoted, promotion.cappedPoints));
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -124,3 +214,10 @@ export function applyPromotion(healthyPoints: number, promotion: Promotion): num
  * as a vacancy worth reallocating.
  */
 export const MIN_STARTER_POINTS = 6;
+
+/**
+ * Share of the starter's projection at which a backup's opening line is
+ * already a lead-back line. At or above this the feed has plainly made the
+ * swap itself, whatever the timestamps say.
+ */
+export const ALREADY_LEAD_SHARE = 0.75;

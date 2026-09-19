@@ -93,6 +93,9 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
           byeWeek: player?.byeWeek ?? null,
           week,
         }),
+        openingStats: proj.openingStats,
+        openedAt: proj.openedAt,
+        statusChangedAt: player?.injuryStatusChangedAt ?? null,
       };
     }),
     { scoring: league.scoringSettings, oddsByTeam },

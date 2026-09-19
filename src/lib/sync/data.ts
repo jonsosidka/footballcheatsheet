@@ -100,6 +100,9 @@ export async function syncPlayers(): Promise<number> {
           yearsExp: sql`excluded.years_exp`,
           status: sql`excluded.status`,
           injuryStatus: sql`excluded.injury_status`,
+          // A bulk upsert rewrites every row, so "changed" has to mean the
+          // value moved, not that the job ran.
+          injuryStatusChangedAt: sql`CASE WHEN ${players.injuryStatus} IS DISTINCT FROM excluded.injury_status THEN now() ELSE ${players.injuryStatusChangedAt} END`,
           injuryBodyPart: sql`excluded.injury_body_part`,
           injuryNotes: sql`excluded.injury_notes`,
           depthChartPosition: sql`excluded.depth_chart_position`,
@@ -162,10 +165,13 @@ export async function applyInjuryStatuses(
   }
 
   let changed = 0;
+  const now = new Date();
   for (const [status, changedIds] of byStatus) {
     await db
       .update(players)
-      .set({ injuryStatus: status, syncedAt: new Date() })
+      // These ids were selected precisely because the status differs, so the
+      // change timestamp is unconditional here.
+      .set({ injuryStatus: status, injuryStatusChangedAt: now, syncedAt: now })
       .where(inArray(players.id, changedIds));
     changed += changedIds.length;
   }
@@ -181,16 +187,21 @@ export async function syncWeeklyProjections(
   const raw = await getWeeklyProjections(season, week, positions);
   const useful = raw.filter(hasRealProjection);
 
+  const now = new Date();
   const rows = useful.map((projection) => ({
     playerId: projection.player_id,
     season,
     week,
     source: 'sleeper' as const,
     stats: projection.stats,
+    // Only ever lands on the first write for this player-week; the conflict
+    // clause below deliberately leaves it alone afterwards.
+    openingStats: projection.stats,
+    openedAt: now,
     team: projection.team,
     opponent: projection.opponent,
     gameId: projection.game_id,
-    fetchedAt: new Date(),
+    fetchedAt: now,
   }));
 
   const deduped = dedupeBy(rows, (row) => `${row.playerId}|${row.season}|${row.week}|${row.source}`);
