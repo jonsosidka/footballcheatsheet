@@ -14,7 +14,7 @@ import { eq, and } from 'drizzle-orm';
 import { scoreProjection } from '@/lib/engine/scoring';
 import { projectPlayers, type TeamOdds } from '@/lib/engine/pipeline';
 import { optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
-import { weeklyAvailability } from '@/lib/engine/availability';
+import { weeklyAvailability, restOfSeasonAvailability } from '@/lib/engine/availability';
 import { evaluatePosture } from '@/lib/engine/value';
 import { computeNeeds, type WaiverCandidate } from '@/lib/engine/waivers';
 import { findTrades, lineupStrength, type TradeIdea, type TradePlayer, type TradeTeam } from '@/lib/engine/trades';
@@ -111,7 +111,15 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
       position: player.position ?? 'UNK',
       team: player.team,
       age: player.age,
-      rosPoints: season ? scoreProjection(season.stats, league.scoringSettings) : 0,
+      // Same discount the waiver board uses: an asset who is out for the year
+      // must not be priced as a full-season starter on either side of a trade.
+      rosPoints: season
+        ? Math.round(
+            scoreProjection(season.stats, league.scoringSettings) *
+              restOfSeasonAvailability({ status: player.status, injuryStatus: player.injuryStatus }) *
+              100,
+          ) / 100
+        : 0,
       eligiblePositions: player.fantasyPositions ?? [player.position ?? 'UNK'],
       dynastyValue: value?.dynastyValue ?? 0,
       redraftValue: value?.redraftValue ?? 0,

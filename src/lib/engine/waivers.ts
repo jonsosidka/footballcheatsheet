@@ -35,6 +35,8 @@ export interface PositionalNeed {
   rosteredCount: number;
   /** Points from our current best starter-quality player here. */
   incumbentPoints: number;
+  /** The same marginal starter's projection for THIS week. */
+  incumbentWeekPoints: number;
   /** Replacement level: what a freely-available player at this position gives. */
   replacementPoints: number;
   /** 0-1; higher means a real gap. */
@@ -46,6 +48,12 @@ export interface WaiverSuggestion {
   drop: WaiverCandidate | null;
   /** Points over the player they'd replace in your starting lineup. */
   vor: number;
+  /**
+   * Points he adds to THIS week's lineup over the man he'd replace. Positive
+   * for a streamer who is worth starting right now even if he is nobody's
+   * rest-of-season upgrade.
+   */
+  streamDelta: number;
   score: DualScore;
   needScore: number;
   rationale: string;
@@ -56,6 +64,20 @@ export interface WaiverSuggestion {
 }
 
 const IDP_POSITIONS = ['DL', 'DE', 'DT', 'LB', 'DB', 'CB', 'S'];
+
+/**
+ * Weekly points a free agent must add over your marginal starter before he is
+ * worth a roster move. Below this it is churn: you pay a claim and a drop for
+ * noise well inside the error bar of any projection.
+ */
+export const STREAM_THRESHOLD = 2;
+
+/**
+ * How much a point of this-week upgrade is worth against a point of
+ * rest-of-season upgrade. A rental is real value but it is temporary, so it
+ * ranks below a permanent improvement of the same size.
+ */
+export const STREAM_RANK_WEIGHT = 0.35;
 
 /**
  * Collapse positions that compete for the exact same slots into one group.
@@ -106,7 +128,7 @@ function startingDemandFor(group: string, rosterPositions: string[]): number {
  */
 export function computeNeeds(
   rosterPositions: string[],
-  myPlayers: Array<{ position: string; rosPoints: number }>,
+  myPlayers: Array<{ position: string; rosPoints: number; weekPoints?: number }>,
   freeAgents: WaiverCandidate[],
 ): Map<string, PositionalNeed> {
   const groups = new Set([
@@ -120,10 +142,11 @@ export function computeNeeds(
     const startingDemand = startingDemandFor(position, rosterPositions);
     if (startingDemand === 0) continue;
 
-    const mine = myPlayers
-      .filter((p) => needGroupOf(p.position, rosterPositions) === position)
-      .map((p) => p.rosPoints)
-      .sort((a, b) => b - a);
+    const minePlayers = myPlayers.filter(
+      (p) => needGroupOf(p.position, rosterPositions) === position,
+    );
+    const mine = minePlayers.map((p) => p.rosPoints).sort((a, b) => b - a);
+    const mineWeek = minePlayers.map((p) => p.weekPoints ?? 0).sort((a, b) => b - a);
 
     const available = freeAgents
       .filter((p) => needGroupOf(p.position, rosterPositions) === position)
@@ -136,6 +159,10 @@ export function computeNeeds(
     // we currently rely on to fill this position's starting demand.
     const slotsNeeded = Math.ceil(startingDemand);
     const incumbentPoints = mine.length >= slotsNeeded ? mine[slotsNeeded - 1] : 0;
+    // The weekly equivalent: what the man holding the last starting slot is
+    // actually projected for on Sunday. An injured or bye-week starter lands
+    // at zero here, which is precisely when a streamer is worth claiming.
+    const incumbentWeekPoints = mineWeek.length >= slotsNeeded ? mineWeek[slotsNeeded - 1] : 0;
 
     // Need rises when we're short bodies or when our marginal starter is
     // barely better than what's sitting on the wire.
@@ -148,6 +175,7 @@ export function computeNeeds(
       startingDemand,
       rosteredCount: mine.length,
       incumbentPoints,
+      incumbentWeekPoints,
       replacementPoints,
       needScore: Math.min(1, 0.6 * shortfall + 0.4 * thinness),
     });
@@ -220,12 +248,22 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
 
     const vor = candidate.rosPoints - need.replacementPoints;
     const overIncumbent = candidate.rosPoints - need.incumbentPoints;
+    const streamDelta = candidate.weekPoints - need.incumbentWeekPoints;
 
-    // Only worth surfacing if it improves the starting lineup or is a genuine
-    // dynasty asset grab.
+    /*
+     * Three ways onto the board, not one.
+     *
+     * Rest-of-season upgrade was the only route, which made the wire look dead
+     * from about week 3 onward: no free agent's remaining season beats a
+     * rostered starter's, so nothing qualified and the board sat empty in
+     * exactly the leagues that live on streaming. A player who beats your
+     * marginal starter THIS WEEK is a real, actionable move even when his
+     * season total never catches up — that is what streaming is.
+     */
     const isUpgrade = overIncumbent > 0;
+    const isStream = streamDelta >= STREAM_THRESHOLD && candidate.weekPoints > 0;
     const isAssetGrab = isDynasty && (candidate.dynastyValue ?? 0) > 500;
-    if (!isUpgrade && !isAssetGrab) continue;
+    if (!isUpgrade && !isStream && !isAssetGrab) continue;
 
     const coversByeWeeks = coversByeGaps(
       { position: candidate.position, team: candidate.team },
@@ -238,6 +276,7 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
       suggestion: {
         add: candidate,
         vor: round2(vor),
+        streamDelta: round2(streamDelta),
         score: scoreMove({
           winNowDelta: isUpgrade ? overIncumbent : 0,
           gaining: [assetOf(candidate)],
@@ -254,17 +293,24 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
   }
 
   /*
-   * Ranking folds in three multipliers beyond raw value:
+   * Ranking folds in four multipliers beyond raw value:
    *   need      — an equal-value add at a thin position is worth more
    *   bye       — solving a week you literally cannot field a lineup is worth
    *               more than a marginal points upgrade
    *   urgency   — heavy community adds mean he won't be there tomorrow
+   *   stream    — points he adds to the lineup you are setting right now
+   *
+   * The stream term is added rather than multiplied because a pure streamer
+   * has a combined score of zero: multiplying would leave him at zero forever
+   * and he would never appear. Weighted below a season-long upgrade, since a
+   * one-week rental is worth less than a permanent one.
    */
   const rankOf = (entry: (typeof scored)[number]) => {
     const need = 0.7 + 0.6 * entry.suggestion.needScore;
     const bye = 1 + Math.min(0.5, entry.coversByeWeeks.length * 0.25);
     const urgency = entry.suggestion.add.trendingAdds > 20_000 ? 1.1 : 1;
-    return entry.suggestion.score.combined * need * bye * urgency;
+    const stream = Math.max(0, entry.suggestion.streamDelta) * STREAM_RANK_WEIGHT;
+    return (entry.suggestion.score.combined + stream) * need * bye * urgency;
   };
 
   const ranked = scored.sort((a, b) => rankOf(b) - rankOf(a)).slice(0, limit);
@@ -336,6 +382,7 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
         drop,
         need,
         overIncumbent,
+        suggestion.streamDelta,
         posture,
         isDynasty,
         openSlots > 0,
@@ -377,6 +424,7 @@ function buildRationale(
   drop: WaiverCandidate | null,
   need: PositionalNeed,
   overIncumbent: number,
+  streamDelta: number,
   posture: Posture,
   isDynasty: boolean,
   openRosterSpot: boolean,
@@ -391,8 +439,17 @@ function buildRationale(
         ? `Projects ${overIncumbent.toFixed(1)} pts above your ${label} over the rest of the season.`
         : `You are short at ${need.position === 'IDP' ? 'IDP' : need.position} — he fills an empty starting slot for ${add.rosPoints.toFixed(0)} pts.`,
     );
+  } else if (streamDelta >= STREAM_THRESHOLD) {
+    parts.push(
+      `Start him this week: ${add.weekPoints.toFixed(1)} projected against ${need.incumbentWeekPoints.toFixed(1)} from the man he replaces` +
+        `${need.incumbentWeekPoints === 0 ? ', who is not playing' : ''}. A rental, not a season-long upgrade.`,
+    );
   } else if (isDynasty) {
     parts.push(`Not a starter now, but a real long-term asset at ${add.age ?? '?'}.`);
+  }
+
+  if (overIncumbent > 0 && streamDelta >= STREAM_THRESHOLD) {
+    parts.push(`He also starts for you this week, worth +${streamDelta.toFixed(1)}.`);
   }
 
   if (coversByeWeeks.length > 0) {

@@ -3,6 +3,7 @@ import { Panel, PositionTag, InjuryTag, Stat } from '@/components/primitives';
 import { ordinal } from '@/lib/engine/value';
 import { RefreshButton } from '@/components/RefreshButton';
 import { AppHeader } from '@/components/AppHeader';
+import { resolveWeek } from '@/lib/data/week';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const week = Number(params.week ?? 1);
+  const week = await resolveWeek(params.week);
   const leagues = await listLeagues();
   const data = await getDashboard(params.league, week);
 

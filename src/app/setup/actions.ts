@@ -23,6 +23,7 @@ import {
   syncByeWeeks,
 } from '@/lib/sync/data';
 import { shapeFromLeague } from '@/lib/sources/fantasycalc';
+import { recordCurrentWeek } from '@/lib/data/week';
 
 export interface FoundLeague {
   leagueId: string;
@@ -136,6 +137,7 @@ export async function importLeague(
     const state = await getState();
     const season = state.league_season;
     const week = Math.max(1, state.display_week ?? state.week ?? 1);
+    await recordCurrentWeek(week);
 
     const league = await syncLeague(leagueId);
     await setMyTeam(leagueId, rosterId, sleeperUserId);

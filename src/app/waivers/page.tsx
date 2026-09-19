@@ -3,6 +3,7 @@ import { listLeagues } from '@/lib/data/dashboard';
 import { Panel, PositionTag, InjuryTag } from '@/components/primitives';
 import { AppHeader } from '@/components/AppHeader';
 import { RefreshButton } from '@/components/RefreshButton';
+import { resolveWeek } from '@/lib/data/week';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export default async function WaiversPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const week = Number(params.week ?? 1);
+  const week = await resolveWeek(params.week);
   const leagues = await listLeagues();
   const view = await getWaiverView(params.league, week);
 
@@ -99,6 +100,18 @@ export default async function WaiversPage({
                           <span className="text-[13.5px]">{s.add.name}</span>
                           <span className="num text-[10px] text-text-faint">{s.add.team}</span>
                           <InjuryTag status={s.add.injuryStatus} />
+                          {s.streamDelta >= 2 ? (
+                            <span
+                              className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
+                              style={{
+                                color: 'var(--color-signal)',
+                                borderColor: 'rgba(80,220,160,0.3)',
+                                background: 'rgba(80,220,160,0.08)',
+                              }}
+                            >
+                              +{s.streamDelta.toFixed(1)} WK {week}
+                            </span>
+                          ) : null}
 
                           {s.drop ? (
                             <>

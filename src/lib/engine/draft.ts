@@ -5,6 +5,7 @@ import {
   type LineupPlayer,
   type OptimalLineup,
 } from './lineup';
+import { restOfSeasonMultiplier } from './availability';
 
 /**
  * Live draft advice.
@@ -466,13 +467,7 @@ export function detectRuns(recentPositions: string[], teams: number): PositionRu
  * starters, depth and lookahead consistently.
  */
 export function injuryDiscount(status: string | null | undefined): number {
-  if (!status) return 1;
-  const normalized = status.toLowerCase();
-  if (/(injured reserve|\bir\b|pup|nfi|suspend)/.test(normalized)) return 0.2;
-  if (/out/.test(normalized)) return 0.6;
-  if (/doubtful/.test(normalized)) return 0.8;
-  if (/questionable/.test(normalized)) return 0.95;
-  return 1;
+  return restOfSeasonMultiplier(status);
 }
 
 // ---------------------------------------------------------------------------

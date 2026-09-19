@@ -2,6 +2,7 @@ import { getTradeView } from '@/lib/data/trades';
 import { listLeagues } from '@/lib/data/dashboard';
 import { Panel, PositionTag } from '@/components/primitives';
 import { AppHeader } from '@/components/AppHeader';
+import { resolveWeek } from '@/lib/data/week';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export default async function TradesPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const week = Number(params.week ?? 1);
+  const week = await resolveWeek(params.week);
   const leagues = await listLeagues();
   const view = await getTradeView(params.league, week);
 

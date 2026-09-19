@@ -148,3 +148,46 @@ export function weeklyAvailability(input: AvailabilityInput): Availability {
 
   return FULLY_AVAILABLE;
 }
+
+// ---------------------------------------------------------------------------
+// Rest of season
+// ---------------------------------------------------------------------------
+
+/**
+ * How much of a REST-OF-SEASON projection to believe, given a player's status.
+ *
+ * A different question from the weekly one, and it needs different numbers. A
+ * player ruled out for Sunday still has fourteen games ahead of him, so his
+ * season line is mostly intact; a player on IR has lost a chunk of the year
+ * that no projection feed ever subtracts. Season projections are published as
+ * though everyone plays sixteen games, so without this a back who is done for
+ * the year still reads as your best running back — which silently suppresses
+ * every waiver suggestion at that position, because nothing on the wire can
+ * beat a healthy-looking phantom.
+ */
+export function restOfSeasonMultiplier(status: string | null | undefined): number {
+  if (!status) return 1;
+  const normalized = status.toLowerCase();
+  if (/(injured reserve|\bir\b|\bpup\b|physically unable|\bnfi\b|non football injury|suspend|\bsus\b)/.test(normalized)) {
+    return 0.2;
+  }
+  if (/\bout\b|inactive|\bdnp\b|\bna\b/.test(normalized)) return 0.6;
+  if (/doubtful/.test(normalized)) return 0.8;
+  if (/questionable/.test(normalized)) return 0.95;
+  return 1;
+}
+
+/**
+ * The rest-of-season discount for a player, reading both status fields and
+ * taking the harsher of the two — `status` carries the season-long list
+ * placements (IR, PUP) while `injuryStatus` carries this week's tag.
+ */
+export function restOfSeasonAvailability(input: {
+  status?: string | null;
+  injuryStatus?: string | null;
+}): number {
+  return Math.min(
+    restOfSeasonMultiplier(input.status),
+    restOfSeasonMultiplier(input.injuryStatus),
+  );
+}

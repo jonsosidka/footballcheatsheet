@@ -5,6 +5,7 @@ import { getState, requiredProjectionPositions } from '@/lib/sources/sleeper';
 import { syncWeeklyProjections, syncGameOdds, syncPlayers, syncSeasonProjections, syncMarketValues, syncByeWeeks, markSynced } from './data';
 import { syncLeagueMembers } from './league';
 import { getDashboard, listLeagues } from '@/lib/data/dashboard';
+import { recordCurrentWeek } from '@/lib/data/week';
 import { getWaiverView } from '@/lib/data/waivers';
 import { buildAlerts, type AlertPlayer } from '@/lib/engine/alerts';
 import { shapeFromLeague } from '@/lib/sources/fantasycalc';
@@ -31,6 +32,7 @@ export async function runHourly(): Promise<RefreshResult> {
   const state = await getState();
   const season = state.league_season;
   const week = Math.max(1, state.display_week ?? state.week ?? 1);
+  await recordCurrentWeek(week);
 
   const tracked = await listLeagues();
   const positions = requiredProjectionPositions(
@@ -110,6 +112,7 @@ export async function runGameday(): Promise<RefreshResult> {
   const state = await getState();
   const season = state.league_season;
   const week = Math.max(1, state.display_week ?? state.week ?? 1);
+  await recordCurrentWeek(week);
 
   const positions = requiredProjectionPositions(
     (await db.select({ rp: leagues.rosterPositions }).from(leagues)).map((r) => r.rp),
@@ -273,6 +276,7 @@ export async function refreshLeagueNow(leagueId: string, week?: number): Promise
   const state = await getState();
   const season = state.league_season;
   const targetWeek = week ?? Math.max(1, state.display_week ?? state.week ?? 1);
+  await recordCurrentWeek(Math.max(1, state.display_week ?? state.week ?? 1));
 
   const [leagueRow] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
   if (!leagueRow) throw new Error(`League ${leagueId} is not tracked`);

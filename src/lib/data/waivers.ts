@@ -6,7 +6,7 @@ import { projectPlayers, type TeamOdds } from '@/lib/engine/pipeline';
 import { optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
 import { evaluatePosture } from '@/lib/engine/value';
 import { computeOccupancy } from '@/lib/engine/roster';
-import { weeklyAvailability } from '@/lib/engine/availability';
+import { weeklyAvailability, restOfSeasonAvailability } from '@/lib/engine/availability';
 import { rankWaiverTargets, computeNeeds, partitionSuggestions, type WaiverCandidate, type WaiverSuggestion, type PositionalNeed } from '@/lib/engine/waivers';
 import { shapeFromLeague, shapeKey } from '@/lib/sources/fantasycalc';
 import { getTrending } from '@/lib/sources/sleeper';
@@ -128,7 +128,19 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     const player = playerById.get(id);
     if (!player) return null;
     const season = seasonById.get(id);
-    const rosPoints = season ? scoreProjection(season.stats, league.scoringSettings) : 0;
+    /*
+     * Season projections assume a full sixteen games. Without this discount a
+     * back who is done for the year still reads as your best RB, so nothing on
+     * the wire can beat him and the board goes quiet at exactly the position
+     * you most need to fill.
+     */
+    const rosMultiplier = restOfSeasonAvailability({
+      status: player.status,
+      injuryStatus: player.injuryStatus,
+    });
+    const rosPoints = season
+      ? round2(scoreProjection(season.stats, league.scoringSettings) * rosMultiplier)
+      : 0;
     return {
       playerId: id,
       name: player.fullName ?? id,
@@ -310,4 +322,8 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     lastRegularWeek,
     lastSyncedAt,
   };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

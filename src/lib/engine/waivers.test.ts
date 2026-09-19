@@ -316,3 +316,89 @@ describe('drop assignment', () => {
     for (const r of results) expect(r.drop?.playerId).not.toBe(r.add.playerId);
   });
 });
+
+describe('streaming and injured incumbents', () => {
+  const rosterOf = (...players: WaiverCandidate[]) => players;
+
+  it('surfaces a streamer who beats this week despite a worse season total', () => {
+    // The redraft case that used to produce an empty board: no free agent's
+    // remaining season beats a rostered starter's, so nothing qualified.
+    const myQb = fa('mine', 'QB', 220, { weekPoints: 4 });
+    const streamer = fa('stream', 'QB', 60, { weekPoints: 18 });
+
+    const suggestions = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [streamer],
+      myRoster: rosterOf(myQb),
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 1,
+    });
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].add.playerId).toBe('stream');
+    expect(suggestions[0].streamDelta).toBeCloseTo(14, 5);
+    expect(suggestions[0].rationale).toContain('this week');
+  });
+
+  it('ignores a streamer whose weekly edge is inside the noise', () => {
+    const myQb = fa('mine', 'QB', 220, { weekPoints: 16 });
+    const marginal = fa('stream', 'QB', 60, { weekPoints: 17 });
+
+    const suggestions = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [marginal],
+      myRoster: rosterOf(myQb),
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 1,
+    });
+
+    expect(suggestions).toHaveLength(0);
+  });
+
+  it('treats a covered but not-playing starter as a zero for the week', () => {
+    /*
+     * The position is not short — two TEs for a TE slot plus a flex share —
+     * but the marginal one is out. His season total still towers over the
+     * wire, so no rest-of-season logic can help; only the weekly view sees
+     * that the slot is about to score nothing.
+     */
+    const healthy = fa('healthy', 'TE', 190, { weekPoints: 12 });
+    const hurt = fa('hurt', 'TE', 180, { weekPoints: 0, injuryStatus: 'Out' });
+    const fill = fa('fill', 'TE', 40, { weekPoints: 7 });
+
+    const needs = computeNeeds(POSITIONS, [healthy, hurt], [fill]);
+    expect(needs.get('TE')!.incumbentPoints).toBe(180);
+    expect(needs.get('TE')!.incumbentWeekPoints).toBe(0);
+
+    const suggestions = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fill],
+      myRoster: rosterOf(healthy, hurt),
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 1,
+    });
+
+    expect(suggestions.map((s) => s.add.playerId)).toContain('fill');
+    expect(suggestions[0].rationale).toContain('not playing');
+  });
+
+  it('still ranks a permanent upgrade above an equal-sized rental', () => {
+    const myRb = fa('mine', 'RB', 100, { weekPoints: 8 });
+    const rental = fa('rental', 'RB', 40, { weekPoints: 18 });
+    const upgrade = fa('upgrade', 'RB', 160, { weekPoints: 18 });
+
+    const suggestions = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [rental, upgrade],
+      myRoster: rosterOf(myRb),
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 1,
+    });
+
+    expect(suggestions[0].add.playerId).toBe('upgrade');
+  });
+});
