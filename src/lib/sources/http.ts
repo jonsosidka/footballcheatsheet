@@ -33,10 +33,22 @@ export interface FetchJsonOptions {
    * has already moved on.
    */
   cache?: RequestCache;
+  /**
+   * Bypass the upstream CDN, not just our own cache. Sleeper fronts its API
+   * with Cloudflare and serves rosters/users/matchups with `s-maxage=300,
+   * stale-while-revalidate=300`, so for up to ten minutes after a waiver claim
+   * the roster endpoint still returns the pre-claim list — and a manual refresh
+   * faithfully syncs the stale copy. `cache: 'no-store'` does nothing about
+   * that; only a URL the CDN has never seen does. Appends a timestamp query
+   * param and implies 'no-store'.
+   */
+  fresh?: boolean;
 }
 
 export async function fetchJson<T>(url: string, options: FetchJsonOptions = {}): Promise<T | null> {
-  const { retries = 3, timeoutMs = 20_000, headers = {}, nullOn404 = false, cache } = options;
+  const { retries = 3, timeoutMs = 20_000, headers = {}, nullOn404 = false, fresh = false } = options;
+  const cache = fresh ? 'no-store' : options.cache;
+  if (fresh) url += `${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
   let lastError: unknown;
 

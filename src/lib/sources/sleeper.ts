@@ -185,16 +185,25 @@ export async function getLeague(leagueId: string): Promise<SleeperLeague | null>
   return fetchJson<SleeperLeague>(`${V1}/league/${leagueId}`, { nullOn404: true });
 }
 
+/*
+ * Rosters, users and matchups are fetched `fresh`: these are the endpoints
+ * that change when a manager acts, and the whole point of the refresh button
+ * is to see that action. Sleeper's CDN would otherwise hand back the roster
+ * from before the waiver claim for up to ten minutes. Two or three requests
+ * per sync, so the bypass costs nothing against the rate budget.
+ */
 export async function getLeagueUsers(leagueId: string): Promise<SleeperUser[]> {
-  return (await fetchJson<SleeperUser[]>(`${V1}/league/${leagueId}/users`)) ?? [];
+  return (await fetchJson<SleeperUser[]>(`${V1}/league/${leagueId}/users`, { fresh: true })) ?? [];
 }
 
 export async function getLeagueRosters(leagueId: string): Promise<SleeperRoster[]> {
-  return (await fetchJson<SleeperRoster[]>(`${V1}/league/${leagueId}/rosters`)) ?? [];
+  return (await fetchJson<SleeperRoster[]>(`${V1}/league/${leagueId}/rosters`, { fresh: true })) ?? [];
 }
 
 export async function getMatchups(leagueId: string, week: number): Promise<SleeperMatchup[]> {
-  return (await fetchJson<SleeperMatchup[]>(`${V1}/league/${leagueId}/matchups/${week}`)) ?? [];
+  return (
+    (await fetchJson<SleeperMatchup[]>(`${V1}/league/${leagueId}/matchups/${week}`, { fresh: true })) ?? []
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +220,7 @@ export async function getUserDrafts(userId: string, season: string): Promise<Sle
 }
 
 export async function getDraft(draftId: string): Promise<SleeperDraft | null> {
-  return fetchJson<SleeperDraft>(`${V1}/draft/${draftId}`, { nullOn404: true, cache: 'no-store' });
+  return fetchJson<SleeperDraft>(`${V1}/draft/${draftId}`, { nullOn404: true, fresh: true });
 }
 
 /**
@@ -219,14 +228,16 @@ export async function getDraft(draftId: string): Promise<SleeperDraft | null> {
  *
  * Polled on a few-second cadence while a draft is live, so it is deliberately
  * uncached and given a short retry budget: during a draft, stale advice is
- * worse than a momentary gap, and the next poll is seconds away.
+ * worse than a momentary gap, and the next poll is seconds away. `fresh`
+ * rather than `cache: 'no-store'` because the pick list is CDN-cached upstream
+ * too, and 'no-store' only ever bypassed our side.
  */
 export async function getDraftPicks(draftId: string): Promise<SleeperDraftPick[]> {
   return (
     (await fetchJson<SleeperDraftPick[]>(`${V1}/draft/${draftId}/picks`, {
       retries: 1,
       timeoutMs: 10_000,
-      cache: 'no-store',
+      fresh: true,
     })) ?? []
   );
 }
