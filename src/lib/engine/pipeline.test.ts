@@ -88,3 +88,41 @@ describe('projectPlayers availability', () => {
     expect(lineup.benchedPlayerIds).toContain('rb1');
   });
 });
+
+describe('projectPlayers promotion', () => {
+  const RB1_LINE = { rush_yd: 95, rush_td: 0.6, rec: 3, rec_yd: 22 };
+  const RB2_LINE = { rush_yd: 28, rush_td: 0.15, rec: 1, rec_yd: 8 };
+
+  const team = (rb1Availability?: ReturnType<typeof weeklyAvailability>) =>
+    projectPlayers(
+      [
+        { playerId: 'rb1', position: 'RB', team: 'SF', stats: RB1_LINE, availability: rb1Availability },
+        { playerId: 'rb2', position: 'RB', team: 'SF', stats: RB2_LINE },
+      ],
+      { scoring: HALF_PPR, oddsByTeam: noOdds },
+    );
+
+  it('raises the backup when the starter is ruled out', () => {
+    const before = team();
+    const after = team(weeklyAvailability({ injuryStatus: 'Out', week: 4 }));
+
+    const rb2Before = before.find((p) => p.playerId === 'rb2')!;
+    const rb2After = after.find((p) => p.playerId === 'rb2')!;
+
+    expect(rb2After.points).toBeGreaterThan(rb2Before.points);
+    expect(rb2After.promotion?.vacatedBy).toBe('rb1');
+    // The starter still goes to zero — a promotion does not resurrect him.
+    expect(after.find((p) => p.playerId === 'rb1')!.points).toBe(0);
+  });
+
+  it('says why in the explanation', () => {
+    const after = team(weeklyAvailability({ injuryStatus: 'Out', week: 4 }));
+    const text = explainLayers(after.find((p) => p.playerId === 'rb2')!);
+    expect(text).toContain('Promoted');
+    expect(text).toContain('%');
+  });
+
+  it('leaves everyone alone when the starter is healthy', () => {
+    for (const player of team()) expect(player.promotion).toBeNull();
+  });
+});

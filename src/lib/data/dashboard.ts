@@ -50,6 +50,8 @@ export interface DashboardPlayer {
   startable: boolean;
   /** Why his projection was cut, null when it wasn't. */
   availabilityNote: string | null;
+  /** Set when he inherits a ruled-out teammate's role this week. */
+  isPromoted: boolean;
   byeWeek: number | null;
   age: number | null;
   dynastyValue: number | null;
@@ -99,6 +101,12 @@ export interface Dashboard {
    * left for the reader to spot in the lineup table.
    */
   doNotStart: DashboardPlayer[];
+  /**
+   * Rostered players who inherit a ruled-out teammate's role this week. The
+   * app's only genuine edge over the projection feed, so it gets said out loud
+   * rather than buried in a number that moved slightly.
+   */
+  promoted: DashboardPlayer[];
 
   movers: DashboardPlayer[];
   occupancy: ReturnType<typeof computeOccupancy>;
@@ -275,6 +283,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       healthyPoints: proj?.healthyPoints ?? 0,
       startable: availability.startable,
       availabilityNote: proj?.availabilityNote ?? availability.reason,
+      isPromoted: proj?.promotion != null,
       byeWeek: player?.byeWeek ?? null,
       age: player?.age ?? null,
       dynastyValue: value?.dynastyValue ?? null,
@@ -317,6 +326,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       reserve: [],
       currentStarters: [],
       doNotStart: [],
+      promoted: [],
       movers: [],
       occupancy: computeOccupancy(slotConfigOf(leagueRow), { players: [], taxi: [], reserve: [] }),
       slotMoves: [],
@@ -378,6 +388,11 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     .map(toDashboardPlayer);
 
   const doNotStart = currentStarters.filter((p) => !p.startable);
+
+  const promoted = (mine.players ?? [])
+    .map(toDashboardPlayer)
+    .filter((p) => p.isPromoted)
+    .sort((a, b) => b.points - a.points);
 
   const movers = (mine.players ?? [])
     .map(toDashboardPlayer)
@@ -481,6 +496,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     reserve: (mine.reserve ?? []).map(toDashboardPlayer),
     currentStarters,
     doNotStart,
+    promoted,
     movers,
     occupancy: computeOccupancy(slotConfig, rosterShape),
     slotMoves: findSlotMoves(slotConfig, rosterShape, rosterInfo, week),

@@ -1,6 +1,7 @@
 import type { ScoringSettings, StatLine } from '@/db/schema';
 import { scoreProjection } from './scoring';
 import { FULLY_AVAILABLE, type Availability, type PlayStatus } from './availability';
+import { findPromotions, applyPromotion, type Promotion } from './vacancy';
 import {
   applyMarketLayer,
   applyPropLayer,
@@ -91,6 +92,8 @@ export interface ProjectedPlayer {
   impliedTeamPoints: number | null;
   spread: number | null;
   playStatus: PlayStatus;
+  /** Set when he inherits a ruled-out teammate's role this week. */
+  promotion: Promotion | null;
   /** The fraction of `healthyPoints` that survived. */
   availabilityMultiplier: number;
   /** False for ruled-out and bye players: never put him in a starting slot. */
@@ -146,7 +149,7 @@ export function projectPlayers(
   }
   const normalization = normalizeRatio(ratios);
 
-  return inputs.map((input) => {
+  const projected = inputs.map((input) => {
     const odds = input.team ? oddsByTeam.get(input.team) : undefined;
     const basePoints = scoreProjection(input.stats, scoring);
     const layers: Array<'base' | 'market' | 'props'> = ['base'];
@@ -207,11 +210,33 @@ export function projectPlayers(
       impliedTeamPoints: odds?.impliedPoints ?? null,
       spread: odds?.spread ?? null,
       playStatus: availability.playStatus,
+      promotion: null as Promotion | null,
       availabilityMultiplier: availability.multiplier,
       startable: availability.startable,
       availabilityNote: availability.reason,
     };
   });
+
+  /*
+   * --- Vacancy: who inherits a ruled-out teammate's role --------------------
+   *
+   * A second pass because it is the only adjustment that depends on OTHER
+   * players: you cannot know a back has been promoted until you know the man
+   * ahead of him is out. Runs after availability for the same reason — the
+   * absence has to be resolved before the opening exists.
+   */
+  const promotions = findPromotions(projected);
+  if (promotions.size === 0) return projected;
+
+  for (const player of projected) {
+    const promotion = promotions.get(player.playerId);
+    if (!promotion) continue;
+    player.promotion = promotion;
+    player.points = applyPromotion(player.healthyPoints, promotion) * player.availabilityMultiplier;
+    player.points = round2(player.points);
+  }
+
+  return projected;
 }
 
 function round2(n: number): number {
@@ -223,6 +248,16 @@ function round2(n: number): number {
  * Returns null when only the base layer was available — there's nothing to say.
  */
 export function explainLayers(player: ProjectedPlayer): string | null {
+  // A promotion is the most actionable thing we can say about a projection,
+  // and it is the one number here that does not come from the feed.
+  if (player.promotion !== null) {
+    return (
+      `${player.promotion.reason} Projection raised from ${player.healthyPoints.toFixed(1)} to ` +
+      `${player.points.toFixed(1)} — players promoted into this role have historically scored ` +
+      `${Math.round((player.promotion.multiplier - 1) * 100)}% more.`
+    );
+  }
+
   // Availability is the headline when it applies — it explains the number far
   // more than a 0.3-point matchup nudge ever does.
   if (player.availabilityNote !== null) {

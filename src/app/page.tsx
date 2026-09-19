@@ -140,6 +140,36 @@ export default async function DashboardPage({
                 </Panel>
               ) : null}
 
+              {data.promoted.length > 0 ? (
+                <Panel title="Next man up" meta="ahead of the feed">
+                  <ul>
+                    {data.promoted.map((p) => (
+                      <li
+                        key={p.playerId}
+                        className="px-4 py-3 border-b border-rule/60 last:border-0"
+                        style={{ borderLeft: '2px solid var(--color-signal)' }}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <PositionTag position={p.position} />
+                          <span className="text-[13px]">{p.name}</span>
+                          <span className="num text-[9px] px-1.5 py-0.5 border border-signal/30 bg-signal/10 text-signal tracking-wider">
+                            PROMOTED
+                          </span>
+                          <span className="num ml-auto text-[13px] text-signal">
+                            {p.points.toFixed(1)}
+                          </span>
+                        </div>
+                        {p.explanation ? (
+                          <p className="mt-1 text-[11px] text-text-faint leading-relaxed">
+                            {p.explanation}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </Panel>
+              ) : null}
+
               <Panel
                 title="Optimal lineup"
                 accent
