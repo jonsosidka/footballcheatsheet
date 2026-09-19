@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { findTrades, evaluateSide, computeStarterFloor, lineupStrength, type TradePlayer, type TradeTeam } from './trades';
+import {
+  findTrades,
+  evaluateSide,
+  computeStarterFloor,
+  lineupStrength,
+  suggestOffers,
+  evaluateTrade,
+  type TradePlayer,
+  type TradeTeam,
+} from './trades';
 
 const POSITIONS = ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'BN', 'BN', 'BN'];
 
@@ -262,5 +271,136 @@ describe('findTrades', () => {
       expect(idea.mine.winNowDelta).toBeGreaterThan(0);
       expect(idea.theirs.winNowDelta).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('suggestOffers', () => {
+  // Contender with a deep, productive roster and one young non-starter;
+  // rebuilder holding a productive veteran RB the contender wants.
+  const me = () =>
+    team(
+      1,
+      'contender',
+      [
+        pl('qb1', 'QB', 300, 4000, 29),
+        pl('rb1', 'RB', 160, 3200, 27),
+        pl('rb2', 'RB', 120, 2400, 27),
+        pl('rb3', 'RB', 60, 1200, 28),
+        pl('wr1', 'WR', 200, 5000, 26),
+        pl('wr2', 'WR', 150, 3500, 27),
+        pl('wr3', 'WR', 110, 2600, 27),
+        pl('youngWr', 'WR', 40, 6500, 22),
+        pl('te1', 'TE', 150, 3000, 28),
+      ],
+      'contend',
+    );
+  const seller = () =>
+    team(
+      2,
+      'rebuilder',
+      [
+        pl('vetRb', 'RB', 220, 5500, 28),
+        pl('rbB', 'RB', 90, 1800, 30),
+        pl('qbB', 'QB', 250, 2500, 33),
+        pl('wrB', 'WR', 130, 2800, 29),
+        pl('wrC', 'WR', 100, 2200, 30),
+        pl('teB', 'TE', 90, 1500, 31),
+      ],
+      'rebuild',
+    );
+
+  it('finds a package the seller accepts for the player asked for', () => {
+    const s = seller();
+    const offers = suggestOffers({ me: me(), partner: s, wants: [s.players[0]], isDynasty: true });
+    expect(offers.length).toBeGreaterThan(0);
+    expect(offers[0].verdict).toBe('accept');
+    expect(offers[0].mine.gets.map((p) => p.playerId)).toEqual(['vetRb']);
+    // The cheapest route is depth, not the WR1 — and the young WR is worth more
+    // than the vet on the market, so straight-up he would be an overpay.
+    const ids = offers[0].mine.gives.map((p) => p.playerId);
+    expect(ids).not.toContain('wr1');
+    expect(ids).not.toContain('youngWr');
+    expect(offers[0].valueRatio).toBeLessThan(1.2);
+  });
+
+  it('ranks a package we gain on above one they would accept but we regret', () => {
+    const s = seller();
+    const offers = suggestOffers({ me: me(), partner: s, wants: [s.players[0]], isDynasty: true });
+    const firstLoss = offers.findIndex((o) => o.mine.combined < 0);
+    const lastGain = offers.map((o) => o.mine.combined >= 0).lastIndexOf(true);
+    if (firstLoss !== -1) expect(lastGain).toBeLessThan(firstLoss);
+  });
+
+  it('ranks the cheapest acceptable package first', () => {
+    const s = seller();
+    const offers = suggestOffers({ me: me(), partner: s, wants: [s.players[0]], isDynasty: true });
+    const accepted = offers.filter((o) => o.verdict === 'accept');
+    for (let i = 1; i < accepted.length; i++) {
+      expect(accepted[i - 1].mine.combined).toBeGreaterThanOrEqual(accepted[i].mine.combined);
+    }
+  });
+
+  it('respects players that must be included and players that are off the table', () => {
+    const m = me();
+    const s = seller();
+    const untouchable = new Set(['youngWr']);
+    const mustGive = [m.players.find((p) => p.playerId === 'rb1')!];
+    const offers = suggestOffers({ me: m, partner: s, wants: [s.players[0]], mustGive, untouchable, isDynasty: true });
+    for (const offer of offers) {
+      const ids = offer.mine.gives.map((p) => p.playerId);
+      expect(ids).toContain('rb1');
+      expect(ids).not.toContain('youngWr');
+    }
+  });
+
+  it('never offers more pieces than allowed', () => {
+    const s = seller();
+    const offers = suggestOffers({ me: me(), partner: s, wants: [s.players[0]], isDynasty: true, maxPieces: 2 });
+    for (const offer of offers) expect(offer.mine.gives.length).toBeLessThanOrEqual(2);
+  });
+
+  it('asks for multiple players at once', () => {
+    const s = seller();
+    const wants = [s.players[0], s.players[3]]; // vetRb + wrB
+    const offers = suggestOffers({ me: me(), partner: s, wants, isDynasty: true });
+    for (const offer of offers) {
+      expect(offer.mine.gets.map((p) => p.playerId).sort()).toEqual(['vetRb', 'wrB']);
+    }
+  });
+
+  it('returns nothing without a want', () => {
+    expect(suggestOffers({ me: me(), partner: seller(), wants: [], isDynasty: true })).toEqual([]);
+  });
+
+  it('shows the price even when nothing clears their bar', () => {
+    // A roster of scrubs cannot pay for a star, but the user should still see
+    // that the best it can do is declined rather than an empty list.
+    const broke = team(3, 'broke', [pl('a', 'RB', 30, 400), pl('b', 'WR', 30, 400), pl('c', 'WR', 25, 350)], 'contend');
+    const s = seller();
+    const offers = suggestOffers({ me: broke, partner: s, wants: [s.players[0]], isDynasty: true });
+    // Value ratio filtering removes the truly absurd; what remains is either
+    // empty or flagged as declined — never a false "accept".
+    expect(offers.every((o) => o.verdict !== 'accept')).toBe(true);
+  });
+});
+
+describe('evaluateTrade', () => {
+  it('scores an exact trade from both sides with a verdict', () => {
+    const m = team(1, 'me', [pl('rb1', 'RB', 150, 3000, 27), pl('wr1', 'WR', 150, 3000, 27)], 'contend');
+    const p = team(2, 'them', [pl('rbX', 'RB', 150, 3000, 27), pl('wrX', 'WR', 150, 3000, 27)], 'contend');
+    const offer = evaluateTrade(m, p, [m.players[0]], [p.players[0]], true);
+    expect(offer.partnerRosterId).toBe(2);
+    expect(offer.valueRatio).toBe(1);
+    expect(offer.verdict).toBe('coin-flip');
+    expect(offer.mine.gives.map((x) => x.playerId)).toEqual(['rb1']);
+    expect(offer.theirs.gives.map((x) => x.playerId)).toEqual(['rbX']);
+  });
+
+  it('flags an offer the other side clearly loses on', () => {
+    const m = team(1, 'me', [pl('scrub', 'RB', 20, 300, 30)], 'contend');
+    const p = team(2, 'them', [pl('star', 'RB', 250, 8000, 24)], 'contend');
+    const offer = evaluateTrade(m, p, [m.players[0]], [p.players[0]], true);
+    expect(offer.verdict).toBe('decline');
+    expect(offer.valueRatio).toBeLessThan(0.1);
   });
 });

@@ -24,14 +24,42 @@ export interface TradeView {
   leagueId: string;
   leagueName: string;
   isDynasty: boolean;
+  myRosterId: number;
   myPosture: string;
   myTrajectory: string;
   ideas: TradeIdea[];
   partners: Array<{ rosterId: number; name: string; posture: string; strength: number; isMe: boolean }>;
+  /** Every roster in the league, for the custom trade builder. */
+  rosters: BuilderTeam[];
   lastSyncedAt: Date | null;
 }
 
-export async function getTradeView(leagueId?: string, week = 1): Promise<TradeView | null> {
+/**
+ * What the builder needs to render a roster: plain data, because it crosses
+ * into a client component. `TradeTeam` carries a Map and stays on the server.
+ */
+export interface BuilderTeam {
+  rosterId: number;
+  name: string;
+  posture: string;
+  isMe: boolean;
+  players: TradePlayer[];
+}
+
+/**
+ * Everything the trade engine needs about one league in one week: every roster
+ * as a fully scored `TradeTeam`, ours singled out. Both the finder and the
+ * on-demand builder start from here.
+ */
+export interface TradeContext {
+  league: typeof leagues.$inferSelect;
+  me: TradeTeam;
+  rivals: TradeTeam[];
+  teams: TradeTeam[];
+  strengths: Array<{ rosterId: number; strength: number }>;
+}
+
+export async function loadTradeContext(leagueId?: string, week = 1): Promise<TradeContext | null> {
   const tracked = await db
     .select({ l: leagues, rosterId: myTeams.rosterId })
     .from(leagues)
@@ -225,7 +253,19 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
   const me = teams.find((t) => t.rosterId === target.rosterId);
   if (!me) return null;
 
-  const rivals = teams.filter((t) => t.rosterId !== target.rosterId);
+  return {
+    league,
+    me,
+    rivals: teams.filter((t) => t.rosterId !== target.rosterId),
+    teams,
+    strengths,
+  };
+}
+
+export async function getTradeView(leagueId?: string, week = 1): Promise<TradeView | null> {
+  const ctx = await loadTradeContext(leagueId, week);
+  if (!ctx) return null;
+  const { league, me, rivals, teams, strengths } = ctx;
 
   const ideas = findTrades({
     me,
@@ -238,6 +278,7 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
     leagueId: league.id,
     leagueName: league.name,
     isDynasty: league.isDynasty,
+    myRosterId: me.rosterId,
     myPosture: me.posture,
     myTrajectory: me.trajectory,
     ideas,
@@ -247,9 +288,17 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
         name: t.name,
         posture: t.posture,
         strength: strengths.find((s) => s.rosterId === t.rosterId)?.strength ?? 0,
-        isMe: t.rosterId === target.rosterId,
+        isMe: t.rosterId === me.rosterId,
       }))
       .sort((a, b) => b.strength - a.strength),
+    rosters: teams.map((t) => ({
+      rosterId: t.rosterId,
+      name: t.name,
+      posture: t.posture,
+      isMe: t.rosterId === me.rosterId,
+      // Most valuable first: that is the order a manager scans a roster in.
+      players: [...t.players].sort((a, b) => b.dynastyValue - a.dynastyValue || b.rosPoints - a.rosPoints),
+    })),
     lastSyncedAt: null,
   };
 }

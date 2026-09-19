@@ -1,7 +1,9 @@
 import { getTradeView } from '@/lib/data/trades';
 import { listLeagues } from '@/lib/data/dashboard';
-import { Panel, PositionTag } from '@/components/primitives';
+import { Panel } from '@/components/primitives';
 import { AppHeader } from '@/components/AppHeader';
+import { TradeBuilder } from '@/components/TradeBuilder';
+import { PlayerList, Delta } from '@/components/TradePieces';
 import { resolveWeek } from '@/lib/data/week';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +42,16 @@ export default async function TradesPage({
       />
 
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <p className="text-[11.5px] text-text-faint max-w-3xl leading-relaxed mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
+          Saw someone on the trade block? Pick their team, tap who you want, and the builder works out what it would
+          take from your side — every package scored under both objectives, cheapest acceptable first. Below it, the
+          finder sweeps the whole league for trades nobody has asked for yet.
+        </p>
+
+        <div className="mb-3 sm:mb-4">
+          <TradeBuilder leagueId={view.leagueId} week={week} isDynasty={view.isDynasty} teams={view.rosters} />
+        </div>
+
         <p className="text-[11.5px] text-text-faint max-w-3xl leading-relaxed mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
           Every idea is scored twice — once under your objective and once under the other manager&apos;s, using{' '}
           <em className="not-italic text-text-dim">their</em> posture, roster holes and age profile. Only mutual gains
@@ -130,63 +142,5 @@ export default async function TradesPage({
         </div>
       </div>
     </main>
-  );
-}
-
-function PlayerList({
-  label,
-  players,
-  tone,
-}: {
-  label: string;
-  players: Array<{ playerId: string; name: string; position: string; age: number | null }>;
-  tone: 'signal' | 'fade';
-}) {
-  return (
-    <div>
-      <div className="eyebrow mb-1">{label}</div>
-      <div className="flex flex-wrap gap-x-2 gap-y-1">
-        {players.map((p) => (
-          <span key={p.playerId} className="inline-flex items-center gap-1.5">
-            <PositionTag position={p.position} />
-            <span
-              className="text-[12.5px]"
-              style={{ color: tone === 'signal' ? 'var(--color-signal)' : 'var(--color-text-dim)' }}
-            >
-              {p.name}
-            </span>
-            {p.age ? <span className="num text-[9.5px] text-text-faint">{p.age}</span> : null}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Delta({
-  label,
-  now,
-  future,
-  isDynasty,
-}: {
-  label: string;
-  now: number;
-  future: number;
-  isDynasty: boolean;
-}) {
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="eyebrow max-w-[110px] truncate">{label}</span>
-      <span className="num text-[11px]" style={{ color: now >= 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
-        {now >= 0 ? '+' : ''}
-        {now.toFixed(0)} now
-      </span>
-      {isDynasty ? (
-        <span className="num text-[11px]" style={{ color: future >= 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
-          {future >= 0 ? '+' : ''}
-          {future.toFixed(1)} future
-        </span>
-      ) : null}
-    </div>
   );
 }

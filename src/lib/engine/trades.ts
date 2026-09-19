@@ -312,6 +312,216 @@ function dedupe(ideas: TradeIdea[]): TradeIdea[] {
   return [...seen.values()];
 }
 
+// ---------------------------------------------------------------------------
+// Custom trades: "I want these players — what do I have to send?"
+// ---------------------------------------------------------------------------
+
+/**
+ * How the other manager is likely to receive an offer.
+ *
+ *   accept     they come out ahead on their own objective
+ *   coin-flip  roughly even on their terms — a pitch, not a fleece
+ *   decline    they lose on their terms; only shown so the cost is visible
+ */
+export type OfferVerdict = 'accept' | 'coin-flip' | 'decline';
+
+export interface TradeOffer {
+  partnerRosterId: number;
+  partnerName: string;
+  mine: TradeSide;
+  theirs: TradeSide;
+  /** Market value sent divided by market value received — above 1 is overpaying. */
+  valueRatio: number;
+  verdict: OfferVerdict;
+  rationale: string;
+}
+
+export interface OfferSearchInput {
+  me: TradeTeam;
+  partner: TradeTeam;
+  /** Their players being asked for. */
+  wants: TradePlayer[];
+  /** Players of ours that every offer must include. */
+  mustGive?: TradePlayer[];
+  /** Players of ours that are off the table. */
+  untouchable?: Set<string>;
+  isDynasty: boolean;
+  /** Most players per offer, counting `mustGive`. */
+  maxPieces?: number;
+  limit?: number;
+}
+
+/**
+ * Below this margin on their objective the trade is a toss-up. Combined scores
+ * are in point-equivalents (see VALUE_POINTS_DIVISOR), so 2 is a couple of
+ * starting points over the rest of the season — inside the noise of any
+ * projection.
+ */
+const COIN_FLIP_MARGIN = 2;
+
+/**
+ * Only the top of our roster is worth enumerating. Packages are drawn from
+ * this many assets; three-piece combinations of 14 is ~460 candidates, each
+ * re-solving two lineups, which is still instant.
+ */
+const OFFER_POOL_SIZE = 14;
+
+/**
+ * The finder asks "what trade exists?"; this asks "what does it take to get
+ * THESE players?". The wants are fixed, so the search is over our side only:
+ * every 1-, 2- and 3-piece package from our tradeable assets, scored the same
+ * way as the finder — both objectives, lineups re-solved — and ranked by what
+ * we keep.
+ *
+ * Ranking by our own gain among offers they would accept is what produces the
+ * useful answer: the cheapest package that still clears their bar comes out on
+ * top, and overpaying variants fall away beneath it.
+ */
+export function suggestOffers(input: OfferSearchInput): TradeOffer[] {
+  const { me, partner, wants, isDynasty } = input;
+  const mustGive = input.mustGive ?? [];
+  const untouchable = input.untouchable ?? new Set<string>();
+  const maxPieces = Math.max(1, input.maxPieces ?? 3);
+  const limit = input.limit ?? 8;
+
+  if (wants.length === 0) return [];
+
+  const wantValue = wants.reduce((sum, p) => sum + adjustedDynastyValue(toAsset(p)), 0);
+  if (wantValue <= 0) return [];
+
+  const locked = new Set(mustGive.map((p) => p.playerId));
+  const pool = me.players
+    .filter((p) => p.dynastyValue > 0 && !locked.has(p.playerId) && !untouchable.has(p.playerId))
+    // Nothing worth more than the whole ask can be part of a sane package.
+    .filter((p) => adjustedDynastyValue(toAsset(p)) <= wantValue * DEFAULT_MAX_VALUE_RATIO)
+    .sort((a, b) => b.dynastyValue - a.dynastyValue)
+    .slice(0, OFFER_POOL_SIZE);
+
+  const offers: TradeOffer[] = [];
+  const consider = (extra: TradePlayer[]) => {
+    const gives = [...mustGive, ...extra];
+    if (gives.length === 0) return;
+    const offer = evaluateTrade(me, partner, gives, wants, isDynasty);
+    if (offer.valueRatio > DEFAULT_MAX_VALUE_RATIO || offer.valueRatio < 1 / DEFAULT_MAX_VALUE_RATIO) return;
+    offers.push(offer);
+  };
+
+  const room = maxPieces - mustGive.length;
+  if (room <= 0) {
+    consider([]);
+  } else {
+    consider([]);
+    for (let i = 0; i < pool.length; i++) {
+      consider([pool[i]]);
+      if (room < 2) continue;
+      for (let j = i + 1; j < pool.length; j++) {
+        consider([pool[i], pool[j]]);
+        if (room < 3) continue;
+        for (let k = j + 1; k < pool.length; k++) consider([pool[i], pool[j], pool[k]]);
+      }
+    }
+  }
+
+  /*
+   * Order: deals that are good for us and likely to land, then good-for-us
+   * pitches, then the ones we would regret. An offer they would snap up is
+   * not a recommendation if it makes our lineup worse — that was the failure
+   * mode of sorting on their verdict alone, where "send your WR1 and RB1"
+   * outranked a coin-flip that gained us forty points.
+   */
+  const rank: Record<OfferVerdict, number> = { accept: 0, 'coin-flip': 1, decline: 2 };
+  const tier = (o: TradeOffer) => (o.mine.combined >= 0 ? 0 : 3) + rank[o.verdict];
+  offers.sort((a, b) => tier(a) - tier(b) || b.mine.combined - a.mine.combined);
+
+  /*
+   * One star plus a rotating cast of throw-ins is the same offer eight times.
+   * Cap per anchor (our most valuable outgoing piece) so the list reads as
+   * distinct routes to the same players. Offers that lose for us, or that
+   * they would decline, are only kept when nothing better exists — they are
+   * there to show the price, not to pad the list.
+   */
+  const perAnchor = new Map<string, number>();
+  const out: TradeOffer[] = [];
+  for (const offer of offers) {
+    if (out.length >= limit) break;
+    if (tier(offer) >= 2 && out.length >= 3) break;
+    const anchor = offer.mine.gives.reduce((best, p) => (p.dynastyValue > best.dynastyValue ? p : best)).playerId;
+    const count = perAnchor.get(anchor) ?? 0;
+    if (count >= 2) continue;
+    perAnchor.set(anchor, count + 1);
+    out.push(offer);
+  }
+  return out;
+}
+
+/** Score one exact trade from both sides. No filtering — the caller chose it. */
+export function evaluateTrade(
+  me: TradeTeam,
+  partner: TradeTeam,
+  gives: TradePlayer[],
+  gets: TradePlayer[],
+  isDynasty: boolean,
+): TradeOffer {
+  const giveValue = gives.reduce((sum, p) => sum + adjustedDynastyValue(toAsset(p)), 0);
+  const getValue = gets.reduce((sum, p) => sum + adjustedDynastyValue(toAsset(p)), 0);
+  const valueRatio = getValue > 0 ? giveValue / getValue : giveValue > 0 ? Infinity : 1;
+
+  const mine = evaluateSide(me, gives, gets, isDynasty);
+  const theirs = evaluateSide(partner, gets, gives, isDynasty);
+
+  const verdict: OfferVerdict =
+    theirs.combined > COIN_FLIP_MARGIN ? 'accept' : theirs.combined > -COIN_FLIP_MARGIN ? 'coin-flip' : 'decline';
+
+  return {
+    partnerRosterId: partner.rosterId,
+    partnerName: partner.name,
+    mine,
+    theirs,
+    valueRatio: Math.round(valueRatio * 100) / 100,
+    verdict,
+    rationale: explainOffer(me, partner, mine, theirs, verdict, isDynasty),
+  };
+}
+
+function explainOffer(
+  me: TradeTeam,
+  partner: TradeTeam,
+  mine: TradeSide,
+  theirs: TradeSide,
+  verdict: OfferVerdict,
+  isDynasty: boolean,
+): string {
+  const parts: string[] = [];
+
+  // Their side first: the question being asked is whether they would take it.
+  if (verdict === 'accept') {
+    const filled = mine.gives.filter((p) => (partner.needs.get(p.position) ?? 0) > 0.5);
+    if (filled.length > 0) {
+      parts.push(`${filled.map((p) => p.name).join(' and ')} lands at a spot they're thin at.`);
+    }
+    if (isDynasty && me.posture !== partner.posture) {
+      parts.push(`They're ${partner.posture}, you're ${me.posture}, so you're paying in a currency they value more.`);
+    }
+    parts.push(`They gain ${theirs.combined.toFixed(1)} on their own objective.`);
+  } else if (verdict === 'coin-flip') {
+    parts.push(`Roughly even on their terms (${theirs.combined >= 0 ? '+' : ''}${theirs.combined.toFixed(1)}) — worth a pitch, expect a counter.`);
+  } else {
+    parts.push(`They lose ${Math.abs(theirs.combined).toFixed(1)} on their own objective; this gets declined as sent.`);
+  }
+
+  if (mine.winNowDelta > 0 && (!isDynasty || mine.futureDelta >= 0)) {
+    parts.push(`You add ${mine.winNowDelta.toFixed(0)} starting points${isDynasty ? ' without giving up future value' : ''}.`);
+  } else if (mine.winNowDelta > 0) {
+    parts.push(`You add ${mine.winNowDelta.toFixed(0)} starting points at a cost of ${Math.abs(mine.futureDelta).toFixed(1)} in future value.`);
+  } else if (isDynasty && mine.futureDelta > 0) {
+    parts.push(`You give up ${Math.abs(mine.winNowDelta).toFixed(0)} starting points for ${mine.futureDelta.toFixed(1)} in future value.`);
+  } else if (mine.combined < 0) {
+    parts.push(`Your lineup gets ${Math.abs(mine.winNowDelta).toFixed(0)} points worse — this only makes sense if you want them for reasons the model can't see.`);
+  }
+
+  return parts.join(' ');
+}
+
 /**
  * Weakest starter at each position. No longer used for trade valuation (see
  * evaluateSide) but still a useful display figure for "what would he have to
