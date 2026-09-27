@@ -402,3 +402,106 @@ describe('streaming and injured incumbents', () => {
     expect(suggestions[0].add.playerId).toBe('upgrade');
   });
 });
+
+describe('drops on a full roster', () => {
+  /*
+   * The regression behind weeks of empty boards: drops were ranked on their
+   * raw season total while adds were ranked on their gain over the incumbent,
+   * so a 60-point bench back "outranked" a +25 upgrade and every claim on a
+   * full roster came back blocked. Earlier tests only used 10-point scrubs.
+   */
+  const starters: WaiverCandidate[] = [
+    fa('qb', 'QB', 300, { weekPoints: 20 }),
+    fa('rb1', 'RB', 200, { weekPoints: 14 }),
+    fa('rb2', 'RB', 120, { weekPoints: 9 }),
+    fa('wr1', 'WR', 210, { weekPoints: 14 }),
+    fa('wr2', 'WR', 190, { weekPoints: 13 }),
+    fa('te', 'TE', 150, { weekPoints: 10 }),
+    fa('k', 'K', 110, { weekPoints: 8 }),
+    fa('def', 'DEF', 100, { weekPoints: 7 }),
+  ];
+
+  it('finds a cut for a modest upgrade when the bench carries real season totals', () => {
+    const roster = [...starters, fa('benchRB', 'RB', 70, { weekPoints: 4 }), fa('def2', 'DEF', 95, { weekPoints: 6 })];
+    const [top] = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fa('upgradeRB', 'RB', 150, { weekPoints: 10 })],
+      myRoster: roster,
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 0,
+    });
+    expect(top.blocked).toBe(false);
+    expect(['benchRB', 'def2']).toContain(top.drop?.playerId);
+  });
+
+  it('pays for a pure streamer with a spare defense', () => {
+    const roster = [...starters, fa('def2', 'DEF', 95, { weekPoints: 6 })];
+    const results = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fa('stream', 'QB', 60, { weekPoints: 26 }), fa('wireDEF', 'DEF', 98, { weekPoints: 5 })],
+      myRoster: roster,
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 0,
+    });
+    expect(results[0].drop?.playerId).toBe('def2');
+  });
+
+  it('never cuts the only kicker for a player at another position', () => {
+    const results = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fa('upgradeRB', 'RB', 150), fa('betterK', 'K', 130)],
+      myRoster: starters,
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 0,
+    });
+    const rb = results.find((r) => r.add.playerId === 'upgradeRB')!;
+    const k = results.find((r) => r.add.playerId === 'betterK')!;
+    expect(rb.drop?.playerId).not.toBe('k');
+    // A kicker for a kicker is a straight swap.
+    expect(k.drop?.playerId).toBe('k');
+  });
+
+  it('lets an add the market does not price cost dynasty filler', () => {
+    // The old guard refused any cut worth more than the add, and an unpriced
+    // add (IDP, kickers, deep veterans) is worth 0 — so nothing was ever cuttable.
+    const roster = [...starters, fa('filler', 'RB', 10, { dynastyValue: 60, age: 24 })];
+    const [top] = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fa('unpricedRB', 'RB', 180, { dynastyValue: null })],
+      myRoster: roster,
+      posture: 'bubble',
+      isDynasty: true,
+      openSlots: 0,
+    });
+    expect(top.drop?.playerId).toBe('filler');
+  });
+
+  it('ignores a rest-of-season edge too small to be worth a claim', () => {
+    const results = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fa('sameK', 'K', 112, { weekPoints: 8 }), fa('realK', 'K', 125, { weekPoints: 8 })],
+      myRoster: starters,
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 0,
+    });
+    expect(results.map((r) => r.add.playerId)).toEqual(['realK']);
+  });
+
+  it('never offers a taxi or IR stash as the cut', () => {
+    const roster = [...starters, fa('taxiKid', 'WR', 5, { dynastyValue: 50 })];
+    const results = rankWaiverTargets({
+      rosterPositions: POSITIONS,
+      freeAgents: [fa('upgradeRB', 'RB', 150)],
+      myRoster: roster,
+      posture: 'contend',
+      isDynasty: false,
+      openSlots: 0,
+      undroppableIds: new Set(['taxiKid']),
+    });
+    for (const r of results) expect(r.drop?.playerId).not.toBe('taxiKid');
+  });
+});

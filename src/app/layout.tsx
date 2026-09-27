@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Instrument_Serif, Archivo, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { ResumeRefresh } from '@/components/ResumeRefresh';
 
 const instrument = Instrument_Serif({
   weight: '400',
@@ -70,6 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="antialiased">
         <div className="relative z-10">{children}</div>
+        <ResumeRefresh />
       </body>
     </html>
   );

@@ -73,11 +73,33 @@ const IDP_POSITIONS = ['DL', 'DE', 'DT', 'LB', 'DB', 'CB', 'S'];
 export const STREAM_THRESHOLD = 2;
 
 /**
+ * Rest-of-season points a free agent must add over your marginal starter to
+ * count as an upgrade. A season projection is far noisier than a weekly one,
+ * so a one-point edge is a coin flip that costs a claim and a cut — churn, not
+ * an improvement.
+ */
+export const ROS_UPGRADE_THRESHOLD = 5;
+
+/**
  * How much a point of this-week upgrade is worth against a point of
  * rest-of-season upgrade. A rental is real value but it is temporary, so it
  * ranks below a permanent improvement of the same size.
  */
 export const STREAM_RANK_WEIGHT = 0.35;
+
+/**
+ * Share of a bench player's edge over the wire that counts as keep value. A
+ * backup is insurance, not production: he only scores when a starter misses,
+ * so cutting him costs a fraction of what his season total suggests.
+ */
+export const BENCH_DEPTH_WEIGHT = 0.25;
+
+/**
+ * Age-adjusted dynasty value above which a player is never offered up as a
+ * cut for a lesser asset. Below it, the market is saying he is roster filler,
+ * and filler is exactly what a waiver claim should cost.
+ */
+export const DYNASTY_PROTECT_FLOOR = 1000;
 
 /**
  * Collapse positions that compete for the exact same slots into one group.
@@ -198,6 +220,11 @@ export interface WaiverInput {
   byeWeeks?: Map<string, number>;
   /** Open active roster spots; 0 means every add requires a drop. */
   openSlots: number;
+  /**
+   * Rostered players whose release would not open an active spot (taxi, IR),
+   * so they can never be the drop that pays for a claim.
+   */
+  undroppableIds?: Set<string>;
   limit?: number;
 }
 
@@ -217,22 +244,39 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
 
   const needs = computeNeeds(rosterPositions, myRoster, freeAgents);
 
-  // Drop candidates: our least valuable players under the current posture.
-  const dropPool = [...myRoster]
-    .map((player) => ({
-      player,
-      // Rank drop candidates the same way we rank adds, so a rebuilding team
-      // protects youth and a contender protects production.
-      rank: scoreMove({
-        winNowDelta: player.rosPoints,
-        gaining: [assetOf(player)],
-        losing: [],
-        posture,
-        isDynasty,
-        trajectory,
-      }).combined,
-    }))
-    .sort((a, b) => a.rank - b.rank);
+  /*
+   * Drop candidates: what each rostered player is worth KEEPING, on the same
+   * scale an add is judged on — points this roster would lose without him,
+   * plus his asset value under the current posture.
+   *
+   * This used to rank drops by their raw season total while adds were ranked
+   * by their gain over the incumbent. A 60-point bench back then "outranked" a
+   * +25 upgrade, so no full roster (which is every roster by week 2) could ever
+   * find a cut and the whole board fell into the blocked pile.
+   *
+   * Scored per add, because who fills the hole depends on who is coming in:
+   * cutting your only kicker is free when the add IS a kicker, and a disaster
+   * when he is a linebacker.
+   */
+  const undroppable = input.undroppableIds ?? new Set<string>();
+  const dropPoolFor = (add: WaiverCandidate) => {
+    const after = [...myRoster, add];
+    return myRoster
+      .filter((player) => !undroppable.has(player.playerId) && player.playerId !== add.playerId)
+      .map((player) => ({
+        player,
+        rank: scoreMove({
+          winNowDelta: lossIfCut(player, after, needs, rosterPositions),
+          gaining: [assetOf(player)],
+          losing: [],
+          posture,
+          isDynasty,
+          trajectory,
+        }).combined,
+      }))
+      // Ties (plenty of bench bodies are worth ~nothing) go to the lower scorer.
+      .sort((a, b) => a.rank - b.rank || a.player.rosPoints - b.player.rosPoints);
+  };
 
   const scored: Array<{
     suggestion: Omit<WaiverSuggestion, 'drop' | 'rationale' | 'blocked' | 'coversByeWeeks'>;
@@ -260,7 +304,7 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
      * marginal starter THIS WEEK is a real, actionable move even when his
      * season total never catches up — that is what streaming is.
      */
-    const isUpgrade = overIncumbent > 0;
+    const isUpgrade = overIncumbent >= ROS_UPGRADE_THRESHOLD;
     const isStream = streamDelta >= STREAM_THRESHOLD && candidate.weekPoints > 0;
     const isAssetGrab = isDynasty && (candidate.dynastyValue ?? 0) > 500;
     if (!isUpgrade && !isStream && !isAssetGrab) continue;
@@ -335,27 +379,34 @@ export function rankWaiverTargets(input: WaiverInput): WaiverSuggestion[] {
     let drop: WaiverCandidate | null = null;
 
     if (openSlots <= 0) {
-      const addRank = scoreMove({
-        winNowDelta: suggestion.score.winNowDelta,
-        gaining: [assetOf(suggestion.add)],
-        losing: [],
-        posture,
-        isDynasty,
-        trajectory,
-      }).combined;
+      // What the add is worth on the same scale as the drop pool: his lineup
+      // gain, his asset value, and the rental value of starting him this week.
+      const addRank =
+        scoreMove({
+          winNowDelta: suggestion.score.winNowDelta,
+          gaining: [assetOf(suggestion.add)],
+          losing: [],
+          posture,
+          isDynasty,
+          trajectory,
+        }).combined +
+        Math.max(0, suggestion.streamDelta) * STREAM_RANK_WEIGHT;
 
       const addValue = isDynasty ? adjustedDynastyValue(assetOf(suggestion.add)) : 0;
 
       drop =
-        dropPool.find((d) => {
+        dropPoolFor(suggestion.add).find((d) => {
           if (used.has(d.player.playerId)) return false;
-          if (d.player.playerId === suggestion.add.playerId) return false;
           if (d.rank >= addRank) return false;
-          // In dynasty, never cut an asset the market values above the one
-          // being claimed. Comparing total move scores isn't enough on its own:
-          // a high-points add outranks any bench stash, so without this the
-          // rotation eventually offers up a genuinely valuable young player.
-          if (isDynasty && adjustedDynastyValue(assetOf(d.player)) > addValue) return false;
+          // In dynasty, never cut a real asset for a lesser one. Scores alone
+          // are not enough: a big points add outranks any bench stash, and
+          // without this the rotation eventually offers up a valuable young
+          // player. Filler under the floor is fair game — otherwise an add
+          // the market does not price at all (IDP, kickers) could never cost
+          // anyone who carries even a token value.
+          if (isDynasty && adjustedDynastyValue(assetOf(d.player)) > Math.max(addValue, DYNASTY_PROTECT_FLOOR)) {
+            return false;
+          }
           return true;
         })?.player ?? null;
 
@@ -409,6 +460,46 @@ export function partitionSuggestions(suggestions: WaiverSuggestion[]): {
   };
 }
 
+/**
+ * Rest-of-season lineup points lost if this player were released, plus the
+ * rental value of his start this week. `roster` is the roster AFTER the add,
+ * so an add at the same position is the one who steps in.
+ *
+ * A starter costs the gap to whoever on the roster moves up. Not the best free
+ * agent: picking him up is a second claim needing a second cut, so it cannot
+ * be what pays for this one. A backup costs a fraction of his edge over the
+ * wire. A second defense or a spare kicker is worth nothing, which is what
+ * makes him the natural cut.
+ */
+function lossIfCut(
+  player: WaiverCandidate,
+  roster: WaiverCandidate[],
+  needs: Map<string, PositionalNeed>,
+  rosterPositions: string[],
+): number {
+  const group = needGroupOf(player.position, rosterPositions);
+  const need = needs.get(group);
+  if (!need) return 0; // a position this league never starts
+
+  const slots = Math.ceil(need.startingDemand);
+  const others = roster.filter(
+    (p) => p.playerId !== player.playerId && needGroupOf(p.position, rosterPositions) === group,
+  );
+
+  const gapTo = (key: 'rosPoints' | 'weekPoints') => {
+    const ahead = others.filter((p) => p[key] > player[key]).length;
+    if (ahead >= slots) return null; // not a starter on this measure
+    const stepIn = others.map((p) => p[key]).sort((a, b) => b - a)[slots - 1] ?? 0;
+    return Math.max(0, player[key] - stepIn);
+  };
+
+  const rosLoss =
+    gapTo('rosPoints') ?? BENCH_DEPTH_WEIGHT * Math.max(0, player.rosPoints - need.replacementPoints);
+  const weekLoss = gapTo('weekPoints') ?? 0;
+
+  return rosLoss + weekLoss * STREAM_RANK_WEIGHT;
+}
+
 function assetOf(candidate: WaiverCandidate): AssetValue {
   return {
     playerId: candidate.playerId,
@@ -432,7 +523,7 @@ function buildRationale(
 ): string {
   const parts: string[] = [];
 
-  if (overIncumbent > 0) {
+  if (overIncumbent >= ROS_UPGRADE_THRESHOLD) {
     const label = need.position === 'IDP' ? 'weakest defensive starter' : `weakest starting ${need.position}`;
     parts.push(
       need.rosteredCount >= Math.ceil(need.startingDemand)
@@ -448,7 +539,7 @@ function buildRationale(
     parts.push(`Not a starter now, but a real long-term asset at ${add.age ?? '?'}.`);
   }
 
-  if (overIncumbent > 0 && streamDelta >= STREAM_THRESHOLD) {
+  if (overIncumbent >= ROS_UPGRADE_THRESHOLD && streamDelta >= STREAM_THRESHOLD) {
     parts.push(`He also starts for you this week, worth +${streamDelta.toFixed(1)}.`);
   }
 

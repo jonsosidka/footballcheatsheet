@@ -26,10 +26,13 @@ const LAST_WEEK = 18;
 
 export function WeekPicker({
   week,
+  liveWeek,
   leagueId,
   variant,
 }: {
   week: number;
+  /** Picking the live week clears the param rather than pinning it. */
+  liveWeek?: number;
   leagueId?: string | null;
   /** 'compact' is the thumb-sized phone control; 'full' the desktop one. */
   variant: 'compact' | 'full';
@@ -43,8 +46,9 @@ export function WeekPicker({
   const hrefFor = (next: number) => {
     const query = new URLSearchParams();
     if (leagueId) query.set('league', leagueId);
-    query.set('week', String(next));
-    return `${pathname}?${query.toString()}`;
+    if (next !== liveWeek) query.set('week', String(next));
+    const search = query.toString();
+    return search ? `${pathname}?${search}` : pathname;
   };
 
   // Same contract as the league switcher: close on tap, report the round trip

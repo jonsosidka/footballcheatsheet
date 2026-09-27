@@ -261,6 +261,8 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     byeGaps,
     byeWeeks,
     openSlots: Math.max(0, occupancy.openActiveSlots),
+    // Releasing a taxi or IR stash frees no active spot, so it cannot pay for a claim.
+    undroppableIds: new Set([...(mine.taxi ?? []), ...(mine.reserve ?? [])]),
     limit: 24,
   });
 

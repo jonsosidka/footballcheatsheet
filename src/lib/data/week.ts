@@ -68,9 +68,13 @@ export async function getCurrentWeek(): Promise<number> {
 /**
  * Resolve the week for a page: an explicit `?week=` wins, otherwise the live
  * week. Invalid or out-of-range input is ignored rather than trusted.
+ *
+ * The live week comes back too, so the chrome can tell a week the user chose
+ * from the one it defaulted to — only the former belongs in a link.
  */
-export async function resolveWeek(param: string | undefined): Promise<number> {
-  const requested = clampWeek(param);
-  if (requested !== null) return requested;
-  return pickWeek(null, await getCurrentWeek());
+export async function resolveWeek(
+  param: string | undefined,
+): Promise<{ week: number; liveWeek: number }> {
+  const liveWeek = await getCurrentWeek();
+  return { week: pickWeek(param, liveWeek), liveWeek };
 }

@@ -13,7 +13,7 @@ export default async function WaiversPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const week = await resolveWeek(params.week);
+  const { week, liveWeek } = await resolveWeek(params.week);
   const leagues = await listLeagues();
   const view = await getWaiverView(params.league, week);
 
@@ -38,6 +38,7 @@ export default async function WaiversPage({
         leagues={leagues}
         activeLeagueId={view.leagueId}
         week={week}
+        liveWeek={liveWeek}
         actions={
           <RefreshButton
             leagueId={view.leagueId}

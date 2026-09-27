@@ -14,7 +14,7 @@ export default async function TradesPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const week = await resolveWeek(params.week);
+  const { week, liveWeek } = await resolveWeek(params.week);
   const leagues = await listLeagues();
   const view = await getTradeView(params.league, week);
 
@@ -39,6 +39,7 @@ export default async function TradesPage({
         leagues={leagues}
         activeLeagueId={view.leagueId}
         week={week}
+        liveWeek={liveWeek}
       />
 
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6">

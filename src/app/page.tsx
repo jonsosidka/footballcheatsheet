@@ -13,7 +13,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const week = await resolveWeek(params.week);
+  const { week, liveWeek } = await resolveWeek(params.week);
   const leagues = await listLeagues();
   const data = await getDashboard(params.league, week);
 
@@ -34,6 +34,7 @@ export default async function DashboardPage({
         leagues={leagues}
         activeLeagueId={league.id}
         week={week}
+        liveWeek={liveWeek}
         actions={
           <RefreshButton
             leagueId={league.id}
