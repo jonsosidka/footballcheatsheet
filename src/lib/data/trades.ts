@@ -318,7 +318,25 @@ export async function loadTradeContext(leagueId?: string, week = 1): Promise<Tra
     };
   };
 
-  const teams = allRosters.map(buildTeam);
+  const recordOf = (roster: (typeof allRosters)[number]) => ({
+    wins: roster.settings?.wins ?? 0,
+    losses: roster.settings?.losses ?? 0,
+    ties: roster.settings?.ties ?? 0,
+    pointsFor: (roster.settings?.fpts ?? 0) + (roster.settings?.fpts_decimal ?? 0) / 100,
+  });
+  const winPct = (r: ReturnType<typeof recordOf>) => {
+    const games = r.wins + r.losses + r.ties;
+    return games === 0 ? 0 : (r.wins + r.ties / 2) / games;
+  };
+  const standingOrder = [...allRosters]
+    .map((r) => ({ rosterId: r.rosterId, rec: recordOf(r) }))
+    .sort((a, b) => winPct(b.rec) - winPct(a.rec) || b.rec.pointsFor - a.rec.pointsFor)
+    .map((r) => r.rosterId);
+
+  const teams = allRosters.map((roster) => ({
+    ...buildTeam(roster),
+    record: { ...recordOf(roster), standing: standingOrder.indexOf(roster.rosterId) + 1 },
+  }));
   const me = teams.find((t) => t.rosterId === target.rosterId);
   if (!me) return null;
 

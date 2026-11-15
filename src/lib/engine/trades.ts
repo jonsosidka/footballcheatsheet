@@ -66,6 +66,17 @@ export interface TradeTeam {
   rosterPositions: string[];
   /** Current optimal starting total, cached so it isn't recomputed per candidate. */
   baselineStrength: number;
+  /** This season so far. Optional: the engine reads posture, not the raw record. */
+  record?: TeamRecord;
+}
+
+export interface TeamRecord {
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  /** 1 = best record in the league, ties broken by points for. */
+  standing: number;
 }
 
 export interface TradeSide {

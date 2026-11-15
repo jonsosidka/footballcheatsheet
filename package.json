@@ -18,6 +18,7 @@
     "demo": "tsx scripts/demo-pipeline.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.1",

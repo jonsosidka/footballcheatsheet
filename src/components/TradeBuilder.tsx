@@ -6,6 +6,7 @@ import type { BuilderTeam } from '@/lib/data/trades';
 import type { TradeOffer, TradePlayer, OfferVerdict, LetterGrade, TradeCallAction } from '@/lib/engine/trades';
 import { Panel, PositionTag } from '@/components/primitives';
 import { PlayerList, Delta } from '@/components/TradePieces';
+import { ClaudeTake } from '@/components/ClaudeTake';
 
 /**
  * Hand-built trades.
@@ -209,7 +210,9 @@ export function TradeBuilder({
         ) : null}
       </div>
 
-      {result ? <Offers result={result} isDynasty={isDynasty} partnerName={partner.name} /> : null}
+      {result ? (
+        <Offers result={result} isDynasty={isDynasty} partnerName={partner.name} leagueId={leagueId} week={week} />
+      ) : null}
     </Panel>
   );
 }
@@ -375,10 +378,14 @@ function Offers({
   result,
   isDynasty,
   partnerName,
+  leagueId,
+  week,
 }: {
   result: { mode: 'suggest' | 'evaluate'; offers: TradeOffer[] };
   isDynasty: boolean;
   partnerName: string;
+  leagueId: string;
+  week: number;
 }) {
   const { mode, offers } = result;
 
@@ -452,6 +459,8 @@ function Offers({
                   <Delta label="you" now={offer.mine.winNowDelta} future={offer.mine.futureDelta} isDynasty={isDynasty} />
                   <Delta label={partnerName} now={offer.theirs.winNowDelta} future={offer.theirs.futureDelta} isDynasty={isDynasty} />
                 </div>
+
+                <ClaudeTake key={offer.mine.gives.map((p) => p.playerId).join(',')} leagueId={leagueId} week={week} offer={offer} />
               </li>
             );
           })}

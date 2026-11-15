@@ -441,3 +441,19 @@ export const syncState = pgTable('sync_state', {
   lastOkAt: timestamp('last_ok_at'),
   detail: text('detail'),
 });
+
+/**
+ * One row per UTC day of Claude API use. The site has no login, so this is the
+ * brake on someone finding the analyze endpoint and running up the bill: a
+ * call is reserved here before the request goes out, and refused past the
+ * daily cap. Token counts are filled in afterwards so spend is visible.
+ */
+export const aiUsage = pgTable('ai_usage', {
+  day: text('day').primaryKey(),
+  calls: integer('calls').notNull().default(0),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  cachedInputTokens: integer('cached_input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  /** Estimated from list prices; the Anthropic console is the real bill. */
+  costMicros: integer('cost_micros').notNull().default(0),
+});
