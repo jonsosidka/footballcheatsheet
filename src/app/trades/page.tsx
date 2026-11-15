@@ -3,6 +3,7 @@ import { listLeagues } from '@/lib/data/dashboard';
 import { Panel } from '@/components/primitives';
 import { AppHeader } from '@/components/AppHeader';
 import { TradeBuilder } from '@/components/TradeBuilder';
+import { AiGm } from '@/components/AiGm';
 import { PlayerList, Delta } from '@/components/TradePieces';
 import { resolveWeek } from '@/lib/data/week';
 
@@ -55,6 +56,10 @@ export default async function TradesPage({
             </>
           ) : null}
         </p>
+
+        <div className="mb-3 sm:mb-4">
+          <AiGm leagueId={view.leagueId} week={week} isDynasty={view.isDynasty} />
+        </div>
 
         <div className="mb-3 sm:mb-4">
           <TradeBuilder leagueId={view.leagueId} week={week} isDynasty={view.isDynasty} teams={view.rosters} />

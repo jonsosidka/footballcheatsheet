@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { buildTradeAction } from '@/app/trades/actions';
 import type { BuilderTeam } from '@/lib/data/trades';
 import type { TradeOffer, TradePlayer, OfferVerdict, LetterGrade, TradeCallAction } from '@/lib/engine/trades';
 import { Panel, PositionTag } from '@/components/primitives';
 import { PlayerList, Delta } from '@/components/TradePieces';
 import { ClaudeTake } from '@/components/ClaudeTake';
+import { readStructured } from '@/lib/ai/readStructured';
+import type { OfferResult } from '@/lib/ai/offers';
 
 /**
  * Hand-built trades.
@@ -22,6 +24,13 @@ import { ClaudeTake } from '@/components/ClaudeTake';
  * every roster in the league as a fully scored team. The lists rendered here
  * are the light shape, enough to pick from.
  */
+
+/** Claude's packages for the current ask; runs alongside the engine's. */
+type ClaudeOffers =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'done'; result: OfferResult }
+  | { status: 'error'; message: string };
 
 /** Cycle on tap: not offered → willing to send → off the table. */
 type MyMark = 'send' | 'keep';
@@ -61,6 +70,8 @@ export function TradeBuilder({
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ mode: 'suggest' | 'evaluate'; offers: TradeOffer[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [claude, setClaude] = useState<ClaudeOffers>({ status: 'idle' });
+  const claudeAbort = useRef<AbortController | null>(null);
 
   const partner = rivals.find((t) => t.rosterId === partnerId) ?? rivals[0];
   if (!me || !partner) return null;
@@ -70,6 +81,7 @@ export function TradeBuilder({
     // A want belongs to one roster; changing teams empties the ask.
     setWants(new Set());
     setResult(null);
+    resetClaude();
   };
 
   const toggleWant = (id: string) => {
@@ -95,8 +107,46 @@ export function TradeBuilder({
   const giveIds = [...marks].filter(([, m]) => m === 'send').map(([id]) => id);
   const keepIds = [...marks].filter(([, m]) => m === 'keep').map(([id]) => id);
 
+  function resetClaude() {
+    claudeAbort.current?.abort();
+    setClaude({ status: 'idle' });
+  }
+
+  /**
+   * Fired next to the engine, not after it: the engine answers in a moment and
+   * its packages show at once; Claude's land on top when they arrive.
+   */
+  const askClaude = async () => {
+    claudeAbort.current?.abort();
+    const controller = new AbortController();
+    claudeAbort.current = controller;
+    setClaude({ status: 'loading' });
+    try {
+      const res = await fetch('/api/trades/offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          leagueId,
+          week,
+          partnerRosterId: partner.rosterId,
+          wantIds: [...wants],
+          giveIds,
+          untouchableIds: keepIds,
+        }),
+      });
+      const out = await readStructured<OfferResult>(res);
+      if (controller.signal.aborted) return;
+      setClaude(out.ok ? { status: 'done', result: out.data } : { status: 'error', message: out.error });
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') setClaude({ status: 'error', message: 'Lost the connection to Claude.' });
+    }
+  };
+
   const run = (mode: 'suggest' | 'evaluate') => {
     setError(null);
+    if (mode === 'suggest') void askClaude();
+    else resetClaude();
     startTransition(async () => {
       const res = await buildTradeAction({
         leagueId,
@@ -196,6 +246,7 @@ export function TradeBuilder({
                 setMarks(new Map());
                 setResult(null);
                 setError(null);
+                resetClaude();
               }}
               className="press min-h-[44px] md:min-h-0 px-2 text-[11px] text-text-faint hover:text-text-dim ml-auto"
             >
@@ -211,7 +262,14 @@ export function TradeBuilder({
       </div>
 
       {result ? (
-        <Offers result={result} isDynasty={isDynasty} partnerName={partner.name} leagueId={leagueId} week={week} />
+        <Offers
+          result={result}
+          claude={claude}
+          isDynasty={isDynasty}
+          partnerName={partner.name}
+          leagueId={leagueId}
+          week={week}
+        />
       ) : null}
     </Panel>
   );
@@ -376,12 +434,14 @@ function GradeChip({ label, grade }: { label: string; grade: LetterGrade }) {
 
 function Offers({
   result,
+  claude,
   isDynasty,
   partnerName,
   leagueId,
   week,
 }: {
   result: { mode: 'suggest' | 'evaluate'; offers: TradeOffer[] };
+  claude: ClaudeOffers;
   isDynasty: boolean;
   partnerName: string;
   leagueId: string;
@@ -391,8 +451,11 @@ function Offers({
 
   return (
     <div className="border-t border-rule">
+      {mode === 'suggest' ? (
+        <ClaudePackages claude={claude} isDynasty={isDynasty} partnerName={partnerName} leagueId={leagueId} week={week} />
+      ) : null}
       <div className="px-4 py-2.5 flex items-baseline justify-between gap-4 border-b border-rule">
-        <span className="eyebrow">{mode === 'evaluate' ? 'this deal, graded' : 'what it would take'}</span>
+        <span className="eyebrow">{mode === 'evaluate' ? 'this deal, graded' : 'engine packages'}</span>
         <span className="eyebrow text-text-faint">
           {offers.length === 0 ? 'nothing' : `${offers.length} ${offers.length === 1 ? 'package' : 'packages'}`}
         </span>
@@ -466,6 +529,108 @@ function Offers({
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+function ClaudePackages({
+  claude,
+  isDynasty,
+  partnerName,
+  leagueId,
+  week,
+}: {
+  claude: ClaudeOffers;
+  isDynasty: boolean;
+  partnerName: string;
+  leagueId: string;
+  week: number;
+}) {
+  if (claude.status === 'idle') return null;
+
+  return (
+    <div className="border-b border-rule">
+      <div className="px-4 py-2.5 flex items-baseline justify-between gap-4 border-b border-rule bg-signal/5">
+        <span className="eyebrow text-signal">claude&apos;s offers</span>
+        <span className="eyebrow text-text-faint">
+          {claude.status === 'loading' ? 'reading both rosters…' : claude.status === 'done' ? 'graded by the engine' : ''}
+        </span>
+      </div>
+
+      {claude.status === 'loading' ? (
+        <p className="px-4 py-4 text-[11.5px] text-text-faint" aria-live="polite">
+          Claude is building offers from your surplus and {partnerName}&apos;s needs. The engine&apos;s packages are below
+          in the meantime.
+        </p>
+      ) : null}
+
+      {claude.status === 'error' ? (
+        <p className="num px-4 py-3 text-[10.5px] text-fade" role="status">
+          {claude.message}
+        </p>
+      ) : null}
+
+      {claude.status === 'done' ? (
+        <>
+          {/* Decided here, not by the model: Claude will negotiate for anything
+              it is asked about, so the engine's verdict gets the first word. */}
+          {claude.result.packages.length > 0 && claude.result.packages.every((p) => p.offer.call.action === 'pass') ? (
+            <p className="mx-4 mt-3 px-3 py-2 border border-fade/40 bg-fade/5 text-[11.5px] text-fade leading-relaxed">
+              Heads up: the engine grades every one of these a pass for you. Getting{' '}
+              {claude.result.packages[0].offer.mine.gets.map((p) => p.name).join(' and ')} barely moves your team, so only
+              send one if you want them for a reason the numbers don&apos;t capture.
+            </p>
+          ) : null}
+          {claude.result.summary ? (
+            <p className="px-4 pt-3 text-[12px] text-text-dim leading-relaxed">{claude.result.summary}</p>
+          ) : null}
+          <ul>
+            {claude.result.packages.map((pkg, i) => (
+              <li key={i} className="px-4 py-3.5 border-b border-rule/60 last:border-0 rise" style={{ animationDelay: `${i * 40}ms` }}>
+                <p className="text-[13px] text-text font-medium leading-snug mb-1">{pkg.headline}</p>
+                <p className="text-[11.5px] text-text-dim leading-relaxed mb-3">{pkg.why}</p>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <GradeChip label="you" grade={pkg.offer.grades.mine} />
+                    <GradeChip label={partnerName} grade={pkg.offer.grades.theirs} />
+                  </div>
+                  <p
+                    className="text-[12px] font-medium leading-snug min-w-0 flex-1 basis-60"
+                    style={{ color: CALL_COLOR[pkg.offer.call.action] }}
+                  >
+                    {pkg.offer.call.headline}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center mb-2">
+                  <PlayerList label="you send" players={pkg.offer.mine.gives} tone="fade" />
+                  <span className="text-text-faint text-[14px] hidden sm:block" aria-hidden="true">
+                    ⇄
+                  </span>
+                  <PlayerList label="you get" players={pkg.offer.mine.gets} tone="signal" />
+                </div>
+
+                <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  <Delta label="you" now={pkg.offer.mine.winNowDelta} future={pkg.offer.mine.futureDelta} isDynasty={isDynasty} />
+                  <Delta label={partnerName} now={pkg.offer.theirs.winNowDelta} future={pkg.offer.theirs.futureDelta} isDynasty={isDynasty} />
+                </div>
+
+                <ClaudeTake leagueId={leagueId} week={week} offer={pkg.offer} />
+              </li>
+            ))}
+          </ul>
+          {claude.result.packages.length === 0 ? (
+            <p className="px-4 py-3 text-[11.5px] text-text-faint">None of Claude&apos;s offers passed the roster check.</p>
+          ) : null}
+          {claude.result.rejected.length > 0 ? (
+            <p className="px-4 py-2 text-[10.5px] text-text-faint border-t border-rule/60">
+              Dropped {claude.result.rejected.length} that didn&apos;t check out:{' '}
+              {claude.result.rejected.map((r) => `${r.headline} (${r.reason})`).join('; ')}
+            </p>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }

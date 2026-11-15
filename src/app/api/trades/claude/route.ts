@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { loadTradeContext } from '@/lib/data/trades';
 import { evaluateTrade } from '@/lib/engine/trades';
 import { MODELS, claudeConfigured, getClaude, recordUsage, reserveCall } from '@/lib/ai/claude';
-import { systemPrompt, tradeUserPrompt, type LeagueFacts, type TradeAiKind } from '@/lib/ai/tradePrompt';
+import { leagueFacts, systemPrompt, tradeUserPrompt, type TradeAiKind } from '@/lib/ai/tradePrompt';
 
 export const dynamic = 'force-dynamic';
 // Opus thinks before it writes; a trade read can take tens of seconds.
@@ -74,20 +74,7 @@ export async function POST(request: Request) {
   if (!reservation.ok) return NextResponse.json({ error: reservation.message }, { status: 429 });
 
   const { league } = ctx;
-  const facts: LeagueFacts = {
-    name: league.name,
-    season: league.season,
-    week: body.week,
-    leagueType: league.leagueType,
-    isDynasty: league.isDynasty,
-    isSuperflex: league.isSuperflex,
-    totalRosters: league.totalRosters,
-    pprType: league.pprType,
-    rosterPositions: league.rosterPositions,
-    scoringSettings: league.scoringSettings,
-    playoffWeekStart: (league.settings as Record<string, number>)?.playoff_week_start ?? null,
-    playoffTeams: (league.settings as Record<string, number>)?.playoff_teams ?? null,
-  };
+  const facts = leagueFacts(league, body.week);
 
   const model = MODELS[body.kind];
   const system = systemPrompt(body.kind);
