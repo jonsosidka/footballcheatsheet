@@ -77,6 +77,7 @@ const POSITION_TONE: Record<string, string> = {
   DL: 'text-[#a0d8c8] border-[#a0d8c8]/25 bg-[#a0d8c8]/8',
   DE: 'text-[#a0d8c8] border-[#a0d8c8]/25 bg-[#a0d8c8]/8',
   DB: 'text-[#d0e8b8] border-[#d0e8b8]/25 bg-[#d0e8b8]/8',
+  PICK: 'text-[#e8e0c8] border-[#e8e0c8]/30 bg-[#e8e0c8]/8',
 };
 
 export function PositionTag({ position }: { position: string }) {

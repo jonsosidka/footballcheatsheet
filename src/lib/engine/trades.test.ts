@@ -404,3 +404,67 @@ describe('evaluateTrade', () => {
     expect(offer.valueRatio).toBeLessThan(0.1);
   });
 });
+
+describe('draft picks as trade assets', () => {
+  const pick = (playerId: string, dynastyValue: number): TradePlayer => ({
+    playerId,
+    name: playerId,
+    position: 'PICK',
+    team: null,
+    age: null,
+    rosPoints: 0,
+    eligiblePositions: ['PICK'],
+    dynastyValue,
+    redraftValue: 0,
+    pick: { season: 2027, round: 1, originalRosterId: 1, via: null, projectedSlot: null },
+  });
+
+  const contender = team(
+    1,
+    'contender',
+    [
+      pl('qb1', 'QB', 300, 6000), pl('rb1', 'RB', 200, 5000), pl('rb2', 'RB', 60, 1500),
+      pl('wr1', 'WR', 180, 4500), pl('wr2', 'WR', 160, 4000), pl('te1', 'TE', 140, 3000),
+      pick('pick:2027:1:1', 4000),
+    ],
+    'contend',
+  );
+  const rebuilder = team(
+    2,
+    'rebuilder',
+    [
+      pl('qb2', 'QB', 250, 4000), pl('rb9', 'RB', 110, 3500, 28), pl('rb8', 'RB', 100, 1200), pl('rb7', 'RB', 105, 1000), pl('wr7', 'WR', 105, 1000),
+      pl('wr9', 'WR', 150, 3500), pl('wr8', 'WR', 120, 3000), pl('te9', 'TE', 100, 2000),
+    ],
+    'rebuild',
+  );
+
+  it('costs a team nothing now and only future value', () => {
+    const side = evaluateSide(contender, [contender.players.find((p) => p.position === 'PICK')!], [], true);
+    expect(side.winNowDelta).toBe(0);
+    expect(side.futureDelta).toBeLessThan(0);
+  });
+
+  it('lets a contender buy a starter with a pick the rebuilder wants', () => {
+    const offer = evaluateTrade(
+      contender,
+      rebuilder,
+      [contender.players.find((p) => p.playerId === 'pick:2027:1:1')!],
+      [rebuilder.players.find((p) => p.playerId === 'rb9')!],
+      true,
+    );
+    expect(offer.mine.winNowDelta).toBeGreaterThan(0);
+    expect(offer.mine.combined).toBeGreaterThan(0);
+    expect(offer.theirs.combined).toBeGreaterThan(0);
+  });
+
+  it('is offered by the builder when it is the cheapest route', () => {
+    const offers = suggestOffers({
+      me: contender,
+      partner: rebuilder,
+      wants: [rebuilder.players.find((p) => p.playerId === 'rb9')!],
+      isDynasty: true,
+    });
+    expect(offers.some((o) => o.mine.gives.some((p) => p.position === 'PICK'))).toBe(true);
+  });
+});

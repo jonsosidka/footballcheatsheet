@@ -325,6 +325,30 @@ export const pickValues = pgTable(
   (t) => [primaryKey({ columns: [t.label, t.shapeKey] })],
 );
 
+/**
+ * Every rookie draft pick in a league and who owns it now — the full grid,
+ * not just Sleeper's traded-picks delta, so a read never has to re-derive
+ * which picks a roster still holds by default.
+ */
+export const draftPicks = pgTable(
+  'draft_picks',
+  {
+    leagueId: text('league_id')
+      .notNull()
+      .references(() => leagues.id, { onDelete: 'cascade' }),
+    season: integer('season').notNull(),
+    round: integer('round').notNull(),
+    /** Roster the pick originally belonged to; its finish sets the slot. */
+    originalRosterId: integer('original_roster_id').notNull(),
+    ownerRosterId: integer('owner_roster_id').notNull(),
+    syncedAt: timestamp('synced_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.leagueId, t.season, t.round, t.originalRosterId] }),
+    index('draft_picks_owner_idx').on(t.leagueId, t.ownerRosterId),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // League activity
 // ---------------------------------------------------------------------------

@@ -200,6 +200,26 @@ export async function getLeagueRosters(leagueId: string): Promise<SleeperRoster[
   return (await fetchJson<SleeperRoster[]>(`${V1}/league/${leagueId}/rosters`, { fresh: true })) ?? [];
 }
 
+/**
+ * Picks that have changed hands. Sleeper only lists traded picks — a pick
+ * still with its original roster never appears — and `roster_id` is the
+ * ORIGINAL owner while `owner_id` is the current one (both roster ids, not
+ * user ids). Fresh, because a pick trade is a manager action like any other.
+ */
+export interface SleeperTradedPick {
+  season: string;
+  round: number;
+  roster_id: number;
+  owner_id: number;
+  previous_owner_id: number | null;
+}
+
+export async function getTradedPicks(leagueId: string): Promise<SleeperTradedPick[]> {
+  return (
+    (await fetchJson<SleeperTradedPick[]>(`${V1}/league/${leagueId}/traded_picks`, { fresh: true })) ?? []
+  );
+}
+
 export async function getMatchups(leagueId: string, week: number): Promise<SleeperMatchup[]> {
   return (
     (await fetchJson<SleeperMatchup[]>(`${V1}/league/${leagueId}/matchups/${week}`, { fresh: true })) ?? []

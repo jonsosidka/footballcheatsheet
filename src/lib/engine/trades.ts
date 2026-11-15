@@ -33,7 +33,26 @@ export interface TradePlayer {
   eligiblePositions: string[];
   dynastyValue: number;
   redraftValue: number;
+  /**
+   * Set when this asset is a rookie draft pick rather than a player. Picks go
+   * through the engine exactly like players — position 'PICK', no points this
+   * season, no lineup slot — so their only effect is on future value, which is
+   * precisely why contenders sell them and rebuilders buy them.
+   */
+  pick?: PickInfo;
 }
+
+export interface PickInfo {
+  season: number;
+  round: number;
+  originalRosterId: number;
+  /** Original owner's team name when the pick was acquired; null if it's their own. */
+  via: string | null;
+  /** Projected slot in the next draft, from the original owner's standing. */
+  projectedSlot: number | null;
+}
+
+export const PICK_POSITION = 'PICK';
 
 export interface TradeTeam {
   rosterId: number;

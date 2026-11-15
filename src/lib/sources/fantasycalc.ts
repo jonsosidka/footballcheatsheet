@@ -1,4 +1,5 @@
 import { fetchJson } from './http';
+import { parsePickLabel } from '@/lib/engine/picks';
 
 /**
  * FantasyCalc dynasty and redraft market values.
@@ -85,7 +86,8 @@ export async function getValues(
 
   for (const row of rows) {
     if (row.player.position === 'PICK') {
-      picks.push({ label: row.player.name, ...parsePickLabel(row.player.name), value: row.value });
+      const { season, round, slot } = parsePickLabel(row.player.name);
+      picks.push({ label: row.player.name, season, round, slot, value: row.value });
       continue;
     }
 
@@ -109,24 +111,8 @@ export async function getValues(
   return { players, picks };
 }
 
-/**
- * FantasyCalc labels picks two ways:
- *   "2026 Pick 1.01"     -> exact slot
- *   "2027 1st (Early)"   -> round with a tier hint, no slot
- */
-export function parsePickLabel(label: string): { season: number | null; round: number | null; slot: number | null } {
-  const exact = label.match(/^(\d{4})\s+Pick\s+(\d+)\.(\d+)$/i);
-  if (exact) {
-    return { season: Number(exact[1]), round: Number(exact[2]), slot: Number(exact[3]) };
-  }
-
-  const rounded = label.match(/^(\d{4})\s+(\d)(?:st|nd|rd|th)/i);
-  if (rounded) {
-    return { season: Number(rounded[1]), round: Number(rounded[2]), slot: null };
-  }
-
-  return { season: null, round: null, slot: null };
-}
+/** Re-exported so callers that only know the source still get the full parser. */
+export { parsePickLabel };
 
 /**
  * Derive the FantasyCalc shape from a Sleeper league. `ppr` is taken from the

@@ -9,6 +9,8 @@ import {
   marketValues,
   myTeams,
   leagueUsers,
+  draftPicks,
+  pickValues,
 } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { scoreProjection } from '@/lib/engine/scoring';
@@ -17,7 +19,15 @@ import { optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
 import { weeklyAvailability, restOfSeasonAvailability } from '@/lib/engine/availability';
 import { evaluatePosture } from '@/lib/engine/value';
 import { computeNeeds, type WaiverCandidate } from '@/lib/engine/waivers';
-import { findTrades, lineupStrength, type TradeIdea, type TradePlayer, type TradeTeam } from '@/lib/engine/trades';
+import {
+  findTrades,
+  lineupStrength,
+  PICK_POSITION,
+  type TradeIdea,
+  type TradePlayer,
+  type TradeTeam,
+} from '@/lib/engine/trades';
+import { createPickPricer, pickId, pickName, projectDraftSlots, tierOfSlot } from '@/lib/engine/picks';
 import { shapeFromLeague, shapeKey } from '@/lib/sources/fantasycalc';
 
 export interface TradeView {
@@ -87,7 +97,17 @@ export async function loadTradeContext(leagueId?: string, week = 1): Promise<Tra
     totalRosters: league.totalRosters,
     pprType: league.pprType,
   });
-  const values = await db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape)));
+  const [values, picks, pickMarket] = await Promise.all([
+    db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape))),
+    // Picks only trade in dynasty. Tolerate the table being absent so a
+    // deploy that lands before the schema push still renders the page.
+    league.isDynasty
+      ? db.select().from(draftPicks).where(eq(draftPicks.leagueId, league.id)).catch(() => [])
+      : Promise.resolve([]),
+    league.isDynasty
+      ? db.select().from(pickValues).where(eq(pickValues.shapeKey, shapeKey(shape))).catch(() => [])
+      : Promise.resolve([]),
+  ]);
 
   const valueById = new Map(values.map((v) => [v.playerId, v]));
   const playerById = new Map(allPlayers.map((p) => [p.id, p]));
@@ -193,14 +213,64 @@ export async function loadTradeContext(leagueId?: string, week = 1): Promise<Tra
   const leagueAges = allRosters.map((r) => avgTopAge(r.players ?? [])).filter((a): a is number => a !== null);
   const leagueAvgAge = leagueAges.length > 0 ? leagueAges.reduce((a, b) => a + b, 0) / leagueAges.length : null;
 
+  const teamName = (roster: (typeof allRosters)[number]) => {
+    const owner = roster.ownerId ? userBysId.get(roster.ownerId) : undefined;
+    return owner?.teamName ?? owner?.displayName ?? `Roster ${roster.rosterId}`;
+  };
+  const nameByRoster = new Map(allRosters.map((r) => [r.rosterId, teamName(r)]));
+
+  /*
+   * Price every pick once. Only the next draft gets a projected slot — the
+   * original owner's current standing is real information about where that
+   * pick lands; two drafts out it is noise, so those price at the round's
+   * middle like the market quotes them.
+   */
+  const pricer = createPickPricer(pickMarket, shape.numTeams);
+  const nextDraft = picks.length > 0 ? Math.min(...picks.map((p) => p.season)) : null;
+  const slots = projectDraftSlots(
+    allRosters.map((r) => ({
+      rosterId: r.rosterId,
+      wins: r.settings?.wins ?? 0,
+      losses: r.settings?.losses ?? 0,
+      ties: r.settings?.ties ?? 0,
+      pointsFor: (r.settings?.fpts ?? 0) + (r.settings?.fpts_decimal ?? 0) / 100,
+    })),
+  );
+  const picksByOwner = new Map<number, TradePlayer[]>();
+  for (const pick of picks) {
+    const slot = pick.season === nextDraft ? (slots.get(pick.originalRosterId) ?? null) : null;
+    const asset: TradePlayer = {
+      playerId: pickId(pick),
+      name: pickName(pick, slot !== null ? tierOfSlot(slot, league.totalRosters) : null),
+      position: PICK_POSITION,
+      team: null,
+      age: null,
+      rosPoints: 0,
+      eligiblePositions: [PICK_POSITION],
+      dynastyValue: pricer.price({ season: pick.season, round: pick.round, slot }),
+      redraftValue: 0,
+      pick: {
+        season: pick.season,
+        round: pick.round,
+        originalRosterId: pick.originalRosterId,
+        via: pick.originalRosterId === pick.ownerRosterId ? null : (nameByRoster.get(pick.originalRosterId) ?? null),
+        projectedSlot: slot,
+      },
+    };
+    const owned = picksByOwner.get(pick.ownerRosterId) ?? [];
+    owned.push(asset);
+    picksByOwner.set(pick.ownerRosterId, owned);
+  }
+
   /**
    * Every rival gets its own posture, trajectory, needs and starter floor.
    * Modelling only our own objective would produce proposals nobody accepts.
    */
   const buildTeam = (roster: (typeof allRosters)[number]): TradeTeam => {
-    const tradePlayers = (roster.players ?? [])
+    const rosterPlayers = (roster.players ?? [])
       .map(toTradePlayer)
       .filter((p): p is TradePlayer => p !== null);
+    const tradePlayers = [...rosterPlayers, ...(picksByOwner.get(roster.rosterId) ?? [])];
 
     const posture = evaluatePosture({
       myStartingStrength: strengths.find((s) => s.rosterId === roster.rosterId)?.strength ?? 0,
@@ -216,7 +286,8 @@ export async function loadTradeContext(leagueId?: string, week = 1): Promise<Tra
       leagueAvgAge,
     });
 
-    const asWaiverCandidates: WaiverCandidate[] = tradePlayers.map((p) => ({
+    // Needs are about lineup holes; a pick fills none.
+    const asWaiverCandidates: WaiverCandidate[] = rosterPlayers.map((p) => ({
       playerId: p.playerId,
       name: p.name,
       position: p.position,
@@ -235,17 +306,15 @@ export async function loadTradeContext(leagueId?: string, week = 1): Promise<Tra
       needs.set(position, need.needScore);
     }
 
-    const owner = roster.ownerId ? userBysId.get(roster.ownerId) : undefined;
-
     return {
       rosterId: roster.rosterId,
-      name: owner?.teamName ?? owner?.displayName ?? `Roster ${roster.rosterId}`,
+      name: nameByRoster.get(roster.rosterId) ?? teamName(roster),
       posture: posture.posture,
       trajectory: posture.trajectory,
       players: tradePlayers,
       needs,
       rosterPositions: league.rosterPositions,
-      baselineStrength: lineupStrength(tradePlayers, league.rosterPositions),
+      baselineStrength: lineupStrength(rosterPlayers, league.rosterPositions),
     };
   };
 

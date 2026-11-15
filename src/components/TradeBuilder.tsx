@@ -25,14 +25,15 @@ import { PlayerList, Delta } from '@/components/TradePieces';
 /** Cycle on tap: not offered → willing to send → off the table. */
 type MyMark = 'send' | 'keep';
 
-const POSITION_FILTERS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'IDP'] as const;
+const POSITION_FILTERS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'IDP', 'PICK'] as const;
 type PositionFilter = (typeof POSITION_FILTERS)[number];
 
-const OFFENSE = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DEF']);
+/** Everything that is not IDP: offense, specialists, and draft picks. */
+const NON_IDP = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'PICK']);
 
 function matchesFilter(position: string, filter: PositionFilter): boolean {
   if (filter === 'ALL') return true;
-  if (filter === 'IDP') return !OFFENSE.has(position);
+  if (filter === 'IDP') return !NON_IDP.has(position);
   return position === filter;
 }
 
@@ -229,7 +230,7 @@ function RosterColumn({
   onTap: (id: string) => void;
 }) {
   const shown = players.filter((p) => matchesFilter(p.position, filter));
-  const present = new Set(players.map((p) => (OFFENSE.has(p.position) ? p.position : 'IDP')));
+  const present = new Set(players.map((p) => (NON_IDP.has(p.position) ? p.position : 'IDP')));
 
   return (
     <div className="min-w-0">
@@ -273,8 +274,7 @@ function RosterColumn({
                 >
                   {p.name}
                   <span className="num text-[9.5px] text-text-faint ml-1.5">
-                    {p.team ?? 'FA'}
-                    {p.age ? ` · ${p.age}` : ''}
+                    {p.pick ? (p.pick.via ? `via ${p.pick.via}` : 'own') : `${p.team ?? 'FA'}${p.age ? ` · ${p.age}` : ''}`}
                   </span>
                 </span>
                 <span className="num text-[10px] text-text-faint w-[46px] text-right hidden sm:inline">
@@ -295,7 +295,11 @@ function RosterColumn({
             </li>
           );
         })}
-        {shown.length === 0 ? <li className="px-4 py-6 text-[12px] text-text-faint">Nobody at that position.</li> : null}
+        {shown.length === 0 ? (
+          <li className="px-4 py-6 text-[12px] text-text-faint">
+            {filter === 'PICK' ? 'No draft picks owned.' : 'Nobody at that position.'}
+          </li>
+        ) : null}
       </ul>
     </div>
   );

@@ -1,14 +1,16 @@
 import { db } from '@/db';
-import { leagues, leagueUsers, rosters, myTeams } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { leagues, leagueUsers, rosters, myTeams, draftPicks } from '@/db/schema';
+import { eq, and, or, notInArray } from 'drizzle-orm';
 import {
   getLeague,
   getLeagueRosters,
   getLeagueUsers,
+  getTradedPicks,
   isDynastyLeague,
   type SleeperLeague,
 } from '@/lib/sources/sleeper';
 import { isSuperflexRoster, pprType } from '@/lib/engine/scoring';
+import { buildPickInventory, pickSeasons, type TradedPick } from '@/lib/engine/picks';
 
 /**
  * Import or refresh a Sleeper league.
@@ -127,6 +129,79 @@ export async function syncLeagueMembers(leagueId: string): Promise<void> {
         },
       });
   }
+
+  /*
+   * Picks ride along with rosters because they change the same way — a
+   * manager makes a trade — and every caller that wants fresh rosters wants
+   * fresh picks too. Isolated so a pick problem never costs the roster sync,
+   * which lineups and alerts depend on.
+   */
+  try {
+    await syncDraftPicks(leagueId, leagueRosters.map((r) => r.roster_id));
+  } catch (error) {
+    console.error(`draft pick sync failed for ${leagueId}:`, (error as Error).message);
+  }
+}
+
+/** Rookie drafts in most dynasty leagues; used when Sleeper has no setting. */
+const DEFAULT_DRAFT_ROUNDS = 4;
+
+/**
+ * Store every tradeable pick in a dynasty league with its current owner.
+ * Redraft leagues have no future picks to trade, so they're skipped.
+ */
+export async function syncDraftPicks(leagueId: string, rosterIds: number[]): Promise<number> {
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!league?.isDynasty || rosterIds.length === 0) return 0;
+
+  const traded: TradedPick[] = (await getTradedPicks(leagueId))
+    .map((p) => ({
+      season: Number(p.season),
+      round: Number(p.round),
+      originalRosterId: Number(p.roster_id),
+      ownerRosterId: Number(p.owner_id),
+    }))
+    .filter((p) => Number.isFinite(p.season) && p.round > 0);
+
+  const seasons = pickSeasons({ season: Number(league.season), status: league.status, traded });
+  const configured = Number(league.settings?.draft_rounds);
+  const rounds = Math.max(
+    configured > 0 ? configured : DEFAULT_DRAFT_ROUNDS,
+    ...traded.filter((p) => seasons.includes(p.season)).map((p) => p.round),
+  );
+
+  const inventory = buildPickInventory({ rosterIds, seasons, rounds, traded });
+  const now = new Date();
+
+  if (inventory.length > 0) {
+    await db
+      .insert(draftPicks)
+      .values(inventory.map((p) => ({ leagueId, ...p, syncedAt: now })))
+      .onConflictDoUpdate({
+        target: [draftPicks.leagueId, draftPicks.season, draftPicks.round, draftPicks.originalRosterId],
+        set: { ownerRosterId: sqlExcluded('owner_roster_id'), syncedAt: now },
+      });
+  }
+
+  // The upsert rewrote the whole current grid; anything left over is a draft
+  // that has happened, a round the league dropped, or a roster that's gone.
+  await db
+    .delete(draftPicks)
+    .where(
+      and(
+        eq(draftPicks.leagueId, leagueId),
+        or(
+          notInArray(draftPicks.season, seasons),
+          notInArray(draftPicks.originalRosterId, rosterIds),
+          notInArray(
+            draftPicks.round,
+            Array.from({ length: rounds }, (_, i) => i + 1),
+          ),
+        ),
+      ),
+    );
+
+  return inventory.length;
 }
 
 /** Record which roster belongs to the user. */

@@ -11,7 +11,7 @@ export function PlayerList({
   tone,
 }: {
   label: string;
-  players: Array<{ playerId: string; name: string; position: string; age: number | null }>;
+  players: Array<{ playerId: string; name: string; position: string; age: number | null; pick?: { via: string | null } }>;
   tone: 'signal' | 'fade';
 }) {
   return (
@@ -27,7 +27,11 @@ export function PlayerList({
             >
               {p.name}
             </span>
-            {p.age ? <span className="num text-[9.5px] text-text-faint">{p.age}</span> : null}
+            {p.pick?.via ? (
+              <span className="num text-[9.5px] text-text-faint truncate max-w-[120px]">via {p.pick.via}</span>
+            ) : p.age ? (
+              <span className="num text-[9.5px] text-text-faint">{p.age}</span>
+            ) : null}
           </span>
         ))}
       </div>

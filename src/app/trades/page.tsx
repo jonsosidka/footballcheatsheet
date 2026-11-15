@@ -47,6 +47,13 @@ export default async function TradesPage({
           Saw someone on the trade block? Pick their team, tap who you want, and the builder works out what it would
           take from your side — every package scored under both objectives, cheapest acceptable first. Below it, the
           finder sweeps the whole league for trades nobody has asked for yet.
+          {view.isDynasty ? (
+            <>
+              {' '}
+              Rookie picks are on the table too: every team&apos;s inventory is synced from Sleeper, traded picks
+              included, and priced at market — next year&apos;s by where the original owner is tracking to finish.
+            </>
+          ) : null}
         </p>
 
         <div className="mb-3 sm:mb-4">
