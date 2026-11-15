@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { buildTradeAction } from '@/app/trades/actions';
 import type { BuilderTeam } from '@/lib/data/trades';
-import type { TradeOffer, TradePlayer, OfferVerdict } from '@/lib/engine/trades';
+import type { TradeOffer, TradePlayer, OfferVerdict, LetterGrade, TradeCallAction } from '@/lib/engine/trades';
 import { Panel, PositionTag } from '@/components/primitives';
 import { PlayerList, Delta } from '@/components/TradePieces';
 
@@ -342,6 +342,35 @@ const VERDICT_STYLE: Record<OfferVerdict, { label: string; color: string }> = {
   decline: { label: 'LIKELY DECLINED', color: 'var(--color-fade)' },
 };
 
+const CALL_COLOR: Record<TradeCallAction, string> = {
+  send: 'var(--color-signal)',
+  pitch: 'var(--color-warn)',
+  'long-shot': 'var(--color-warn)',
+  pass: 'var(--color-fade)',
+};
+
+function gradeColor(grade: LetterGrade): string {
+  if (grade.startsWith('A') || grade.startsWith('B')) return 'var(--color-signal)';
+  if (grade.startsWith('C')) return 'var(--color-warn)';
+  return 'var(--color-fade)';
+}
+
+function GradeChip({ label, grade }: { label: string; grade: LetterGrade }) {
+  const color = gradeColor(grade);
+  return (
+    <div
+      className="flex flex-col items-center justify-center min-w-14 max-w-32 px-2 py-1 border"
+      style={{ borderColor: color }}
+      title={`${label}: ${grade}, judged on ${label === 'you' ? 'your' : 'their'} own objective`}
+    >
+      <span className="num text-[20px] leading-none font-semibold" style={{ color }}>
+        {grade}
+      </span>
+      <span className="eyebrow text-[8px] text-text-faint mt-1 max-w-full truncate">{label}</span>
+    </div>
+  );
+}
+
 function Offers({
   result,
   isDynasty,
@@ -391,6 +420,19 @@ function Offers({
                   >
                     {offer.valueRatio.toFixed(2)}× value
                   </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <GradeChip label="you" grade={offer.grades.mine} />
+                    <GradeChip label={partnerName} grade={offer.grades.theirs} />
+                  </div>
+                  <p
+                    className="text-[13px] font-medium leading-snug min-w-0 flex-1 basis-60"
+                    style={{ color: CALL_COLOR[offer.call.action] }}
+                  >
+                    {offer.call.headline}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center mb-2">

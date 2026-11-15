@@ -352,7 +352,111 @@ export interface TradeOffer {
   /** Market value sent divided by market value received — above 1 is overpaying. */
   valueRatio: number;
   verdict: OfferVerdict;
+  /** Letter grade for each side, judged on that side's own objective. */
+  grades: { mine: LetterGrade; theirs: LetterGrade };
+  /** The bottom line: should we send it? */
+  call: TradeCall;
   rationale: string;
+}
+
+// ---------------------------------------------------------------------------
+// Letter grades
+// ---------------------------------------------------------------------------
+
+export type LetterGrade =
+  | 'A+' | 'A' | 'A-'
+  | 'B+' | 'B' | 'B-'
+  | 'C+' | 'C' | 'C-'
+  | 'D+' | 'D' | 'D-'
+  | 'F';
+
+/**
+ * Grades are on the gain as a share of the team's starting lineup, not raw
+ * points. "+40 points" is a franchise-changer in week 15 and a rounding error
+ * in week 1; a percentage of what the lineup will score for the rest of the
+ * season reads the same all year.
+ *
+ * The floor keeps the denominator sane late in the season and in the
+ * offseason, when the rest-of-season total shrinks toward zero and a purely
+ * future-value move would otherwise grade off the chart.
+ */
+const GRADE_BASELINE_FLOOR = 300;
+
+/** Lower bound (in % of lineup) for each grade, best first. Symmetric around C. */
+const GRADE_CUTS: [LetterGrade, number][] = [
+  ['A+', 8],
+  ['A', 5],
+  ['A-', 3.5],
+  ['B+', 2.5],
+  ['B', 1.5],
+  ['B-', 0.75],
+  ['C+', 0.25],
+  ['C', -0.25],
+  ['C-', -0.75],
+  ['D+', -1.5],
+  ['D', -3],
+  ['D-', -5],
+];
+
+export function gradeSide(side: TradeSide, team: TradeTeam): LetterGrade {
+  const pct = (side.combined / Math.max(team.baselineStrength, GRADE_BASELINE_FLOOR)) * 100;
+  for (const [grade, cut] of GRADE_CUTS) if (pct >= cut) return grade;
+  return 'F';
+}
+
+/** 'A+' → 12 … 'F' → 0, for comparing grades. */
+export function gradeRank(grade: LetterGrade): number {
+  const i = GRADE_CUTS.findIndex(([g]) => g === grade);
+  return i === -1 ? 0 : GRADE_CUTS.length - i;
+}
+
+/**
+ *   send       good for us and they should take it — make the offer
+ *   pitch      good for us, they're on the fence — offer it, expect a counter
+ *   long-shot  good for us, but they lose on their terms — it won't land as is
+ *   pass       not worth it for us, whatever they think
+ */
+export type TradeCallAction = 'send' | 'pitch' | 'long-shot' | 'pass';
+
+export interface TradeCall {
+  action: TradeCallAction;
+  headline: string;
+}
+
+/** B- or better is a clear win for us; C+ to C- is a wash and not worth the churn. */
+const WORTH_IT = 'B-' satisfies LetterGrade;
+
+function makeCall(mine: LetterGrade, theirs: LetterGrade, verdict: OfferVerdict): TradeCall {
+  const good = gradeRank(mine) >= gradeRank(WORTH_IT);
+  const great = gradeRank(mine) >= gradeRank('A-');
+
+  if (!good) {
+    const wash = gradeRank(mine) >= gradeRank('C-');
+    return {
+      action: 'pass',
+      headline: wash
+        ? `Pass. It's a wash for you (${mine}), not worth the churn.`
+        : `Pass. You come out behind (${mine}).`,
+    };
+  }
+  if (verdict === 'accept') {
+    return {
+      action: 'send',
+      headline: great
+        ? `Send it. A clear win for you (${mine}), and they should take it (${theirs}).`
+        : `Send it. A solid win for you (${mine}) that they should take (${theirs}).`,
+    };
+  }
+  if (verdict === 'coin-flip') {
+    return {
+      action: 'pitch',
+      headline: `Worth pitching. Good for you (${mine}), but it's about even for them (${theirs}), so expect a counter.`,
+    };
+  }
+  return {
+    action: 'long-shot',
+    headline: `Good for you (${mine}), but they lose on it (${theirs}). It won't land as sent. Add a sweetener or move on.`,
+  };
 }
 
 export interface OfferSearchInput {
@@ -491,6 +595,8 @@ export function evaluateTrade(
   const verdict: OfferVerdict =
     theirs.combined > COIN_FLIP_MARGIN ? 'accept' : theirs.combined > -COIN_FLIP_MARGIN ? 'coin-flip' : 'decline';
 
+  const grades = { mine: gradeSide(mine, me), theirs: gradeSide(theirs, partner) };
+
   return {
     partnerRosterId: partner.rosterId,
     partnerName: partner.name,
@@ -498,6 +604,8 @@ export function evaluateTrade(
     theirs,
     valueRatio: Math.round(valueRatio * 100) / 100,
     verdict,
+    grades,
+    call: makeCall(grades.mine, grades.theirs, verdict),
     rationale: explainOffer(me, partner, mine, theirs, verdict, isDynasty),
   };
 }
