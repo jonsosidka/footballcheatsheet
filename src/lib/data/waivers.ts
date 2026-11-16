@@ -1,5 +1,6 @@
+import { relevantPlayers } from '@/lib/data/players';
 import { db } from '@/db';
-import { leagues, rosters, players, seasonProjections, projections, gameOdds, marketValues, myTeams, syncState } from '@/db/schema';
+import { leagues, rosters, seasonProjections, projections, gameOdds, marketValues, myTeams, syncState } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { scoreProjection } from '@/lib/engine/scoring';
 import { projectPlayers, type TeamOdds } from '@/lib/engine/pipeline';
@@ -56,16 +57,23 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
     tracked[0];
   const league = target.l;
 
-  const [allRosters, allPlayers, seasonRows, weekRows, odds, trendingAdds] = await Promise.all([
+  const shape = shapeFromLeague({
+    isDynasty: league.isDynasty,
+    isSuperflex: league.isSuperflex,
+    totalRosters: league.totalRosters,
+    pprType: league.pprType,
+  });
+  const [allRosters, allPlayers, seasonRows, weekRows, odds, trendingAdds, syncRows, values] = await Promise.all([
     db.select().from(rosters).where(eq(rosters.leagueId, league.id)),
-    db.select().from(players),
+    relevantPlayers({ leagueId: league.id, season: league.season, week, shapeKey: shapeKey(shape) }),
     db.select().from(seasonProjections).where(eq(seasonProjections.season, league.season)),
     db.select().from(projections).where(and(eq(projections.season, league.season), eq(projections.week, week))),
     db.select().from(gameOdds).where(and(eq(gameOdds.season, league.season), eq(gameOdds.week, week))),
     getTrending('add', 24, 200).catch(() => []),
+    db.select().from(syncState),
+    db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape))),
   ]);
 
-  const syncRows = await db.select().from(syncState);
   const relevantSyncKeys = new Set(['hourly', 'gameday', `manual:${league.id}`]);
   const lastSyncedAt =
     syncRows
@@ -73,13 +81,6 @@ export async function getWaiverView(leagueId?: string, week = 1): Promise<Waiver
       .map((row) => row.lastOkAt as Date)
       .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
-  const shape = shapeFromLeague({
-    isDynasty: league.isDynasty,
-    isSuperflex: league.isSuperflex,
-    totalRosters: league.totalRosters,
-    pprType: league.pprType,
-  });
-  const values = await db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape)));
 
   const valueById = new Map(values.map((v) => [v.playerId, v]));
   const playerById = new Map(allPlayers.map((p) => [p.id, p]));

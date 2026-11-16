@@ -1,8 +1,8 @@
+import { relevantPlayers } from '@/lib/data/players';
 import { db } from '@/db';
 import {
   leagues,
   rosters,
-  players,
   projections,
   gameOdds,
   marketValues,
@@ -155,15 +155,22 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
   const [leagueRow] = await db.select().from(leagues).where(eq(leagues.id, target.id));
   if (!leagueRow) return null;
 
-  const [allRosters, allPlayers, weekProjections, odds, syncRows] = await Promise.all([
+  const shape = shapeFromLeague({
+    isDynasty: leagueRow.isDynasty,
+    isSuperflex: leagueRow.isSuperflex,
+    totalRosters: leagueRow.totalRosters,
+    pprType: leagueRow.pprType,
+  });
+  const [allRosters, allPlayers, weekProjections, odds, syncRows, values] = await Promise.all([
     db.select().from(rosters).where(eq(rosters.leagueId, leagueRow.id)),
-    db.select().from(players),
+    relevantPlayers({ leagueId: leagueRow.id, season: leagueRow.season, week, shapeKey: shapeKey(shape) }),
     db
       .select()
       .from(projections)
       .where(and(eq(projections.season, leagueRow.season), eq(projections.week, week))),
     db.select().from(gameOdds).where(and(eq(gameOdds.season, leagueRow.season), eq(gameOdds.week, week))),
     db.select().from(syncState),
+    db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape))),
   ]);
 
   // Newest of the jobs that actually refresh this league's data.
@@ -174,13 +181,6 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       .map((row) => row.lastOkAt as Date)
       .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
-  const shape = shapeFromLeague({
-    isDynasty: leagueRow.isDynasty,
-    isSuperflex: leagueRow.isSuperflex,
-    totalRosters: leagueRow.totalRosters,
-    pprType: leagueRow.pprType,
-  });
-  const values = await db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape)));
 
   const valueById = new Map(values.map((v) => [v.playerId, v]));
   const playerById = new Map(allPlayers.map((p) => [p.id, p]));

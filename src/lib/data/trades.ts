@@ -1,8 +1,8 @@
+import { relevantPlayers } from '@/lib/data/players';
 import { db } from '@/db';
 import {
   leagues,
   rosters,
-  players,
   seasonProjections,
   projections,
   gameOdds,
@@ -87,22 +87,20 @@ export async function loadTradeContext(leagueId?: string, week = 1): Promise<Tra
     tracked[0];
   const league = target.l;
 
-  const [allRosters, allPlayers, seasonRows, weekRows, odds, users] = await Promise.all([
-    db.select().from(rosters).where(eq(rosters.leagueId, league.id)),
-    db.select().from(players),
-    db.select().from(seasonProjections).where(eq(seasonProjections.season, league.season)),
-    db.select().from(projections).where(and(eq(projections.season, league.season), eq(projections.week, week))),
-    db.select().from(gameOdds).where(and(eq(gameOdds.season, league.season), eq(gameOdds.week, week))),
-    db.select().from(leagueUsers).where(eq(leagueUsers.leagueId, league.id)),
-  ]);
-
   const shape = shapeFromLeague({
     isDynasty: league.isDynasty,
     isSuperflex: league.isSuperflex,
     totalRosters: league.totalRosters,
     pprType: league.pprType,
   });
-  const [values, picks, pickMarket] = await Promise.all([
+  // One round of queries: none depends on another.
+  const [allRosters, allPlayers, seasonRows, weekRows, odds, users, values, picks, pickMarket] = await Promise.all([
+    db.select().from(rosters).where(eq(rosters.leagueId, league.id)),
+    relevantPlayers({ leagueId: league.id, season: league.season, week, shapeKey: shapeKey(shape) }),
+    db.select().from(seasonProjections).where(eq(seasonProjections.season, league.season)),
+    db.select().from(projections).where(and(eq(projections.season, league.season), eq(projections.week, week))),
+    db.select().from(gameOdds).where(and(eq(gameOdds.season, league.season), eq(gameOdds.week, week))),
+    db.select().from(leagueUsers).where(eq(leagueUsers.leagueId, league.id)),
     db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape))),
     // Picks only trade in dynasty. Tolerate the table being absent so a
     // deploy that lands before the schema push still renders the page.
