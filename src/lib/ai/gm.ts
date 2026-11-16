@@ -46,6 +46,8 @@ Rules for moves:
 - trade: partner_roster_id is the other team's roster_id; give_ids are on my team; get_ids are on theirs. Propose deals the other manager would plausibly accept given their posture, record and needs — no fleeces.
 - waiver: add_id must come from <waivers>; drop_id must be on my team, or null if a roster spot is open.
 - note: advice that is not a transaction (hold a player, which team to target later, a positional plan). Leave ids empty and partner null.
+- Respect the trade window in <league>. If the deadline has passed, suggest no trades. If it is this week or next, lead with the trades that matter and say they have to be agreed now.
+- Respect the format: in redraft only this season matters, so ignore long-term value and never suggest picks; in dynasty weigh this season against future value according to the team's posture.
 - 3 to 6 moves, best first. Fewer, better moves beat a long list. If the team should stand pat, say so with a note.
 
 Writing: headline is one short line a manager scans ("Buy a WR2 from the 2-7 rebuilder"). why is two or three plain sentences, specific to these players, this league's scoring and lineup, and the other team's situation. summary is two sentences on where this team stands and the overall plan. No markdown.`;

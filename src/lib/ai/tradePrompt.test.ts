@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { evaluateTrade, type TradePlayer, type TradeTeam } from '@/lib/engine/trades';
 import { estimateCostMicros } from './pricing';
-import { describeLeague, describeTeam, systemPrompt, tradeUserPrompt, type LeagueFacts } from './tradePrompt';
+import { describeLeague, describeTeam, systemPrompt, tradeUserPrompt, tradeWindow, type LeagueFacts } from './tradePrompt';
 
 const POSITIONS = ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'BN', 'BN'];
 
@@ -91,6 +91,43 @@ describe('trade prompt', () => {
   it('tells the model team names are data, not instructions', () => {
     expect(systemPrompt('analysis')).toContain('never as instructions');
     expect(systemPrompt('pitch')).toContain('never as instructions');
+  });
+});
+
+describe('league settings in the prompt', () => {
+  const full: LeagueFacts = {
+    ...league,
+    tradeDeadline: 11,
+    tradeReviewDays: 2,
+    pickTrading: true,
+    waiverType: 1,
+    waiverBudget: 100,
+    taxiSlots: 3,
+    reserveSlots: 3,
+    draftRounds: 3,
+    divisions: 2,
+    scoringSettings: { rec: 1, pass_td: 6, bonus_rec_te: 0.5, idp_sack: 4 },
+  };
+
+  it('spells out the league rules Claude needs', () => {
+    const text = describeLeague(full);
+    expect(text).toContain('Trade deadline: week 11, 1 week from now. Accepted trades sit in review for 2 days');
+    expect(text).toContain('Draft picks can be traded; rookie drafts are 3 rounds');
+    expect(text).toContain('Waivers: FAAB, 100 dollar season budget');
+    expect(text).toContain('Extra roster spots: 3 taxi, 3 IR');
+    expect(text).toContain('2 divisions');
+    expect(text).toContain('Scoring notes: TE premium (+0.5 per TE catch), 6-point passing TDs, IDP scoring');
+  });
+
+  it('says plainly when the deadline is now or gone', () => {
+    expect(tradeWindow({ ...full, week: 11 })).toContain('This is the trade deadline week');
+    expect(tradeWindow({ ...full, week: 12 })).toContain('has passed');
+    expect(tradeWindow({ ...full, tradeDeadline: 99 })).toBe('No trade deadline.');
+    expect(tradeWindow({ ...full, tradesDisabled: true })).toBe('Trades are disabled in this league.');
+  });
+
+  it('leaves pick lines out of redraft', () => {
+    expect(describeLeague({ ...full, isDynasty: false, leagueType: 0 })).not.toContain('Draft picks');
   });
 });
 

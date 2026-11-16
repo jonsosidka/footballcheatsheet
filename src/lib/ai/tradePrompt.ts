@@ -28,6 +28,19 @@ export interface LeagueFacts {
   scoringSettings: Record<string, number>;
   playoffWeekStart: number | null;
   playoffTeams: number | null;
+  /** Sleeper's trade_deadline week; 18+ (Sleeper uses 99) means none. */
+  tradeDeadline?: number | null;
+  tradesDisabled?: boolean;
+  /** Days a trade sits in review before it processes. */
+  tradeReviewDays?: number | null;
+  pickTrading?: boolean;
+  /** Same reading as the waiver board: 0 rolling, 1 FAAB, 2 reverse standings. */
+  waiverType?: number | null;
+  waiverBudget?: number | null;
+  taxiSlots?: number | null;
+  reserveSlots?: number | null;
+  draftRounds?: number | null;
+  divisions?: number | null;
 }
 
 export type TradeAiKind = 'analysis' | 'pitch';
@@ -60,7 +73,55 @@ export function leagueFacts(league: LeagueRowLike, week: number): LeagueFacts {
     scoringSettings: league.scoringSettings,
     playoffWeekStart: league.settings?.playoff_week_start ?? null,
     playoffTeams: league.settings?.playoff_teams ?? null,
+    tradeDeadline: league.settings?.trade_deadline ?? null,
+    tradesDisabled: league.settings?.disable_trades === 1,
+    tradeReviewDays: league.settings?.trade_review_days ?? null,
+    pickTrading: league.settings?.pick_trading === 1,
+    waiverType: league.settings?.waiver_type ?? null,
+    waiverBudget: league.settings?.waiver_budget ?? null,
+    taxiSlots: league.settings?.taxi_slots ?? null,
+    reserveSlots: league.settings?.reserve_slots ?? null,
+    draftRounds: league.settings?.draft_rounds ?? null,
+    divisions: league.settings?.divisions ?? null,
   };
+}
+
+/** Where the league stands against its trade deadline, said plainly. */
+export function tradeWindow(league: LeagueFacts): string | null {
+  if (league.tradesDisabled) return 'Trades are disabled in this league.';
+  const deadline = league.tradeDeadline;
+  if (deadline === null || deadline === undefined) return null;
+  if (deadline >= 18) return 'No trade deadline.';
+  const review = league.tradeReviewDays
+    ? ` Accepted trades sit in review for ${league.tradeReviewDays} days before processing.`
+    : '';
+  if (league.week > deadline) return `The trade deadline (week ${deadline}) has passed. No more trades this season.`;
+  if (league.week === deadline) {
+    return `This is the trade deadline week (week ${deadline}): any trade has to be agreed now.${review}`;
+  }
+  const left = deadline - league.week;
+  return `Trade deadline: week ${deadline}, ${left} week${left === 1 ? '' : 's'} from now.${review}`;
+}
+
+function waiverLine(league: LeagueFacts): string | null {
+  if (league.waiverType === null || league.waiverType === undefined) return null;
+  if (league.waiverType === 1) {
+    return league.waiverBudget ? `Waivers: FAAB, ${league.waiverBudget} dollar season budget` : 'Waivers: FAAB';
+  }
+  if (league.waiverType === 2) return 'Waivers: reverse standings priority';
+  return 'Waivers: rolling priority';
+}
+
+/** Scoring quirks worth calling out, so they are not lost in the raw list. */
+function scoringNotes(s: Record<string, number>): string[] {
+  const notes: string[] = [];
+  if ((s.bonus_rec_te ?? 0) > 0) notes.push(`TE premium (+${s.bonus_rec_te} per TE catch)`);
+  if (s.pass_td !== undefined && s.pass_td !== 4) notes.push(`${s.pass_td}-point passing TDs`);
+  if ((s.bonus_rec_rb ?? 0) > 0) notes.push(`RB reception bonus (+${s.bonus_rec_rb})`);
+  if ((s.bonus_rec_wr ?? 0) > 0) notes.push(`WR reception bonus (+${s.bonus_rec_wr})`);
+  if ((s.rush_fd ?? 0) > 0 || (s.rec_fd ?? 0) > 0) notes.push('first-down scoring');
+  if (Object.keys(s).some((k) => k.startsWith('idp_') && s[k] !== 0)) notes.push('IDP scoring');
+  return notes;
 }
 
 const FORMAT_NAMES: Record<number, string> = { 0: 'redraft', 1: 'keeper', 2: 'dynasty' };
@@ -81,6 +142,7 @@ export function describeLeague(league: LeagueFacts): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
     .join(', ');
+  const notes = scoringNotes(league.scoringSettings);
 
   return [
     `League: ${league.name} (${league.season} season, currently week ${league.week})`,
@@ -89,6 +151,16 @@ export function describeLeague(league: LeagueFacts): string {
     league.playoffWeekStart || league.playoffTeams
       ? `Playoffs: ${league.playoffTeams ? `${league.playoffTeams} of ${league.totalRosters} teams make it` : 'format unknown'}${league.playoffWeekStart ? `, starting week ${league.playoffWeekStart}` : ''}`
       : null,
+    tradeWindow(league),
+    league.tradesDisabled || !league.isDynasty
+      ? null
+      : `Draft picks ${league.pickTrading ? 'can' : 'cannot'} be traded${league.draftRounds ? `; rookie drafts are ${league.draftRounds} rounds` : ''}`,
+    waiverLine(league),
+    league.taxiSlots || league.reserveSlots
+      ? `Extra roster spots: ${[league.taxiSlots ? `${league.taxiSlots} taxi` : null, league.reserveSlots ? `${league.reserveSlots} IR` : null].filter(Boolean).join(', ')}`
+      : null,
+    league.divisions && league.divisions > 1 ? `${league.divisions} divisions` : null,
+    notes.length ? `Scoring notes: ${notes.join(', ')}` : null,
     `Scoring (Sleeper stat key = points): ${scoring}`,
   ]
     .filter(Boolean)
