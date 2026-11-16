@@ -1,25 +1,21 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Nav } from '@/components/Nav';
 import { TabBar } from '@/components/TabBar';
 import { LeagueSwitcher, type SwitchableLeague } from '@/components/LeagueSwitcher';
 import { WeekPicker } from '@/components/WeekPicker';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { DropStrip } from '@/components/primitives';
 
 /**
- * One header for every route.
+ * One header for every route: the lime release strip, the wordmark, the
+ * numbered nav, and the league / week / sync / theme controls. Each page then
+ * opens with its own `PageHero` underneath.
  *
- * Each page previously grew its own, and they had drifted: the dashboard hid
- * the league pills below `md`, the others let them overflow the header, and
- * none of them offered a way to change week. Consolidating means the phone
- * layout is fixed once rather than four times, and a new page gets the whole
- * navigation model for free.
- *
- * It also renders the bottom tab bar. That is not where a tab bar belongs in
- * the document, but it is `position: fixed`, and pairing it with the header
- * keeps "the app's chrome" a single component a page mounts once.
+ * On phones the nav moves to the bottom `TabBar` and the controls drop to a
+ * second row, so the thumb never has to reach for an 11px link.
  */
 export function AppHeader({
-  eyebrow,
-  title,
   active,
   leagues,
   activeLeagueId,
@@ -27,11 +23,9 @@ export function AppHeader({
   liveWeek,
   carriedWeek,
   actions,
-  meta,
-  width = 'max-w-[1440px]',
+  strip,
+  division,
 }: {
-  eyebrow: ReactNode;
-  title: ReactNode;
   /** Route of the current page, for marking the active tab. */
   active: string;
   leagues: SwitchableLeague[];
@@ -49,66 +43,58 @@ export function AppHeader({
    * through the draft board or setup does not drop it.
    */
   carriedWeek?: number;
-  /** Right-hand controls — the refresh button, typically. */
+  /** The sync button, typically. */
   actions?: ReactNode;
-  /** Supporting figures. Desktop only: on a phone they cost a row of chrome
-   *  and repeat what the panels below already say. */
-  meta?: ReactNode;
-  width?: string;
+  /** Lines for the release strip. Omit for no strip. */
+  strip?: string[];
+  /** Small line under "FC—26", e.g. "DYNASTY DIV.". */
+  division?: string;
 }) {
   // Only a week the user chose travels in a link. Carrying the default too is
   // what froze the app on week 1: every tab and league link baked it in, and
   // an explicit `?week=` outranks the live week on the next load.
   const pinnedWeek = week !== undefined ? (week !== liveWeek ? week : undefined) : carriedWeek;
 
+  const home = new URLSearchParams();
+  if (activeLeagueId) home.set('league', activeLeagueId);
+  if (pinnedWeek) home.set('week', String(pinnedWeek));
+  const homeHref = home.toString() ? `/?${home.toString()}` : '/';
+
+  const controls =
+    leagues.length > 0 || week ? (
+      <div className="flex items-stretch gap-2 min-w-0">
+        {leagues.length > 0 ? (
+          <LeagueSwitcher leagues={leagues} activeId={activeLeagueId} week={week !== undefined ? pinnedWeek : undefined} />
+        ) : null}
+        {week ? <WeekPicker week={week} liveWeek={liveWeek} leagueId={activeLeagueId} /> : null}
+      </div>
+    ) : null;
+
   return (
     <>
-      <header
-        className="sticky top-0 z-30 border-b border-rule bg-ink/80 backdrop-blur-xl
-          backdrop-saturate-150 pt-safe px-safe"
-      >
-        {/* --- phone ---------------------------------------------------- */}
-        <div className="md:hidden px-4 pt-2.5 pb-3 space-y-2.5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="eyebrow mb-1 truncate">{eyebrow}</div>
-              <h1 className="font-display text-[1.5rem] leading-none tracking-tight truncate">{title}</h1>
-            </div>
-            {actions ? <div className="shrink-0">{actions}</div> : null}
-          </div>
+      {strip ? <DropStrip items={strip} /> : null}
+      <header className="sticky top-0 z-30 bg-ink border-b border-rule pt-safe px-safe">
+        <div className="shell py-3 md:py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <Link href={homeHref} className="chrome flex items-end gap-3.5 no-underline text-text focus-ring" aria-label="Cheatsheet home">
+            <span className="display text-[26px] md:text-[30px] tracking-[-0.035em] leading-[0.9] normal-case">
+              CHEATSHEET<sup className="text-[12px] font-bold align-top tracking-normal">®</sup>
+            </span>
+            <span className="hidden min-[1360px]:block font-mono text-[10px] leading-[1.35] text-text-faint">
+              FC—26
+              <br />
+              {division ?? 'SUPPLY CO.'}
+            </span>
+          </Link>
 
-          {leagues.length > 0 ? (
-            <div className="flex items-stretch gap-2">
-              <LeagueSwitcher leagues={leagues} activeId={activeLeagueId} week={week !== undefined ? pinnedWeek : undefined} variant="button" />
-              {week ? <WeekPicker week={week} liveWeek={liveWeek} leagueId={activeLeagueId} variant="compact" /> : null}
-            </div>
-          ) : null}
-        </div>
+          <Nav active={active} leagueId={activeLeagueId ?? undefined} week={pinnedWeek} />
 
-        {/* --- desktop -------------------------------------------------- */}
-        <div
-          className={`hidden md:flex ${width} mx-auto px-6 py-4 items-end justify-between gap-8 flex-wrap`}
-        >
-          <div className="flex items-end gap-5">
-            <div>
-              <div className="eyebrow mb-1">{eyebrow}</div>
-              <h1 className="font-display text-[2rem] leading-none tracking-tight">{title}</h1>
-            </div>
-            <div className="h-9 w-px bg-rule" />
-            <Nav active={active} leagueId={activeLeagueId ?? undefined} week={pinnedWeek} />
-            {leagues.length > 0 ? (
-              <>
-                <div className="h-9 w-px bg-rule" />
-                <LeagueSwitcher leagues={leagues} activeId={activeLeagueId} week={week !== undefined ? pinnedWeek : undefined} variant="pills" />
-              </>
-            ) : null}
-          </div>
-
-          <div className="flex items-center gap-6">
-            {week ? <WeekPicker week={week} liveWeek={liveWeek} leagueId={activeLeagueId} variant="full" /> : null}
+          <div className="flex items-stretch gap-2">
+            <div className="hidden md:flex">{controls}</div>
             {actions}
-            {meta}
+            <ThemeToggle />
           </div>
+
+          {controls ? <div className="md:hidden w-full">{controls}</div> : null}
         </div>
       </header>
 

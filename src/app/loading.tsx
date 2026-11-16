@@ -3,10 +3,12 @@ import { PageSkeleton } from '@/components/PageSkeleton';
 export default function Loading() {
   return (
     <PageSkeleton
-      eyebrow="Dashboard"
+      kicker="[ My Team ] — Loading"
       title={
         <>
-          Football <em className="text-signal not-italic">Cheatsheet</em>
+          Reading
+          <br />
+          <span className="outline-text">your roster.</span>
         </>
       }
       active="/"

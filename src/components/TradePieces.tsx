@@ -22,8 +22,8 @@ export function PlayerList({
           <span key={p.playerId} className="inline-flex items-center gap-1.5">
             <PositionTag position={p.position} />
             <span
-              className="text-[12.5px]"
-              style={{ color: tone === 'signal' ? 'var(--color-signal)' : 'var(--color-text-dim)' }}
+              className="text-[14px] font-semibold"
+              style={{ color: tone === 'signal' ? 'var(--color-signal)' : 'var(--color-text)' }}
             >
               {p.name}
             </span>
@@ -53,12 +53,12 @@ export function Delta({
   return (
     <div className="flex items-baseline gap-2">
       <span className="eyebrow max-w-[110px] truncate">{label}</span>
-      <span className="num text-[11px]" style={{ color: now >= 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
+      <span className="num text-[12px] font-bold" style={{ color: now >= 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
         {now >= 0 ? '+' : ''}
         {now.toFixed(0)} now
       </span>
       {isDynasty ? (
-        <span className="num text-[11px]" style={{ color: future >= 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
+        <span className="num text-[12px] font-bold" style={{ color: future >= 0 ? 'var(--color-signal)' : 'var(--color-fade)' }}>
           {future >= 0 ? '+' : ''}
           {future.toFixed(1)} future
         </span>

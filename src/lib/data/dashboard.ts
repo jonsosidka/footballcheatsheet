@@ -8,6 +8,7 @@ import {
   marketValues,
   myTeams,
   syncState,
+  leagueUsers,
   type ScoringSettings,
 } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -113,7 +114,7 @@ export interface Dashboard {
   slotMoves: SlotMove[];
 
   posture: PostureResult | null;
-  leagueStrengths: Array<{ rosterId: number; strength: number; isMine: boolean }>;
+  leagueStrengths: Array<{ rosterId: number; name: string; strength: number; isMine: boolean }>;
 
   assets: DashboardPlayer[];
   totalAssetValue: number;
@@ -161,7 +162,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
     totalRosters: leagueRow.totalRosters,
     pprType: leagueRow.pprType,
   });
-  const [allRosters, allPlayers, weekProjections, odds, syncRows, values] = await Promise.all([
+  const [allRosters, allPlayers, weekProjections, odds, syncRows, users, values] = await Promise.all([
     db.select().from(rosters).where(eq(rosters.leagueId, leagueRow.id)),
     relevantPlayers({ leagueId: leagueRow.id, season: leagueRow.season, week, shapeKey: shapeKey(shape) }),
     db
@@ -170,8 +171,14 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
       .where(and(eq(projections.season, leagueRow.season), eq(projections.week, week))),
     db.select().from(gameOdds).where(and(eq(gameOdds.season, leagueRow.season), eq(gameOdds.week, week))),
     db.select().from(syncState),
+    db.select().from(leagueUsers).where(eq(leagueUsers.leagueId, leagueRow.id)),
     db.select().from(marketValues).where(eq(marketValues.shapeKey, shapeKey(shape))),
   ]);
+  const userById = new Map(users.map((u) => [u.userId, u]));
+  const teamNameOf = (roster: (typeof allRosters)[number]) => {
+    const owner = roster.ownerId ? userById.get(roster.ownerId) : undefined;
+    return owner?.teamName || owner?.displayName || `Team ${roster.rosterId}`;
+  };
 
   // Newest of the jobs that actually refresh this league's data.
   const relevantSyncKeys = new Set(['hourly', 'gameday', `manual:${leagueRow.id}`]);
@@ -425,7 +432,12 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
   };
 
   const leagueStrengths = allRosters
-    .map((r) => ({ rosterId: r.rosterId, strength: strengthOf(r), isMine: r.rosterId === target.rosterId }))
+    .map((r) => ({
+      rosterId: r.rosterId,
+      name: teamNameOf(r),
+      strength: strengthOf(r),
+      isMine: r.rosterId === target.rosterId,
+    }))
     .sort((a, b) => b.strength - a.strength);
 
   const avgTopAge = (ids: string[]): number | null => {

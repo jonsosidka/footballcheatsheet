@@ -1,6 +1,9 @@
 import { getDraftView } from '@/lib/data/draft';
-import { listLeagues, type LeagueSummary } from '@/lib/data/dashboard';
+import Link from 'next/link';
+import { listLeagues } from '@/lib/data/dashboard';
 import { AppHeader } from '@/components/AppHeader';
+import { SiteFooter } from '@/components/SiteFooter';
+import { EmptyState } from '@/components/primitives';
 import { DraftBoard } from '@/components/DraftBoard';
 
 export const dynamic = 'force-dynamic';
@@ -39,72 +42,68 @@ export default async function DraftPage({
   if (params.draft) query.set('draft', params.draft);
   if (params.slot) query.set('slot', params.slot);
 
+  const header = (
+    <AppHeader
+      active="/draft"
+      leagues={leagues}
+      activeLeagueId={view?.leagueId ?? params.league}
+      carriedWeek={carriedWeek}
+      strip={
+        view
+          ? [`${view.draftName}`, `${view.teams}-team ${view.type}`, `${view.rounds} rounds`, view.status.replace('_', ' ')]
+          : ['Draft room', 'No draft found']
+      }
+    />
+  );
+
   if (!view) {
     return (
       <main className="min-h-dvh pb-tabbar">
-        <Header
-          leagues={leagues}
-          activeLeagueId={params.league}
-          carriedWeek={carriedWeek}
-          title="Draft"
-          subtitle="no draft found"
-        />
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-12 sm:py-16">
-          <p className="text-[13px] text-text-dim mb-3">
-            {leagues.length === 0
-              ? 'No leagues imported yet — run through setup first.'
-              : 'Sleeper has no draft for this league yet.'}
-          </p>
-          <p className="text-[11.5px] text-text-faint leading-relaxed max-w-xl">
-            A draft appears here as soon as the commissioner creates one. To follow a mock draft instead,
-            append <span className="num text-text-dim">?draft=&lt;draft_id&gt;</span> — the id is the last
-            segment of the Sleeper draft URL — and add{' '}
-            <span className="num text-text-dim">&amp;slot=&lt;n&gt;</span> to say which seat is yours.
-          </p>
+        {header}
+        <div className="shell">
+          <EmptyState
+            kicker="[ Draft ] — No draft yet"
+            title={
+              <>
+                No draft.
+                <br />
+                <span className="outline-text">Yet.</span>
+              </>
+            }
+            action={
+              leagues.length === 0 ? (
+                <Link href="/setup" className="btn btn-primary">
+                  Import from Sleeper →
+                </Link>
+              ) : null
+            }
+          >
+            <p>
+              {leagues.length === 0
+                ? 'Import a league in setup first.'
+                : 'This league has no draft on Sleeper yet. It shows up here as soon as the commissioner creates one.'}
+            </p>
+            <p className="mt-3 text-[13px] text-text-faint">
+              Following a mock draft? Add <span className="num text-text-dim">?draft=&lt;draft_id&gt;</span> to the
+              address — the id is the last part of the Sleeper draft link — and{' '}
+              <span className="num text-text-dim">&amp;slot=&lt;n&gt;</span> for your seat.
+            </p>
+          </EmptyState>
         </div>
+        <SiteFooter />
       </main>
     );
   }
 
   return (
     <main className="min-h-dvh pb-tabbar">
-      <Header
-        leagues={leagues}
-        activeLeagueId={view.leagueId ?? params.league}
-        carriedWeek={carriedWeek}
-        title={view.draftName}
-        subtitle={`${view.teams}-team ${view.type} · ${view.rounds} rounds · ${view.status.replace('_', ' ')}`}
+      {header}
+      <DraftBoard
+        initial={view}
+        query={query.toString()}
+        kicker={`[ Draft ] — ${view.draftName} — ${view.teams}-team ${view.type} — ${view.rounds} rounds`}
       />
-      <DraftBoard initial={view} query={query.toString()} />
+      <SiteFooter />
     </main>
-  );
-}
-
-function Header({
-  leagues,
-  activeLeagueId,
-  carriedWeek,
-  title,
-  subtitle,
-}: {
-  leagues: LeagueSummary[];
-  activeLeagueId?: string | null;
-  carriedWeek?: number;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <AppHeader
-      eyebrow={subtitle}
-      title={
-        <>
-          Draft <em className="text-signal not-italic">/</em> {title}
-        </>
-      }
-      active="/draft"
-      leagues={leagues}
-      activeLeagueId={activeLeagueId}
-      carriedWeek={carriedWeek}
-    />
   );
 }

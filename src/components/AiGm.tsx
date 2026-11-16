@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { GmMove, GmResult } from '@/lib/ai/gm';
 import type { LetterGrade } from '@/lib/engine/trades';
-import { Panel, PositionTag } from '@/components/primitives';
+import { Panel, PositionTag, Tag } from '@/components/primitives';
 import { PlayerList, Delta } from '@/components/TradePieces';
 import { ClaudeTake } from '@/components/ClaudeTake';
 import { readStructured } from '@/lib/ai/readStructured';
@@ -42,35 +42,35 @@ export function AiGm({ leagueId, week, isDynasty }: { leagueId: string; week: nu
 
   return (
     <Panel
-      title="AI suggested moves"
+      index={1}
+      title="Claude's moves"
       accent
       meta={
         <button
           type="button"
           onClick={run}
           disabled={loading}
-          className="press normal-case tracking-normal min-h-[36px] md:min-h-0 px-3 py-1.5 border border-signal/50 bg-signal/10 text-signal text-[11.5px] disabled:opacity-50 disabled:cursor-wait"
+          className="btn btn-primary press disabled:cursor-wait"
         >
-          {loading ? 'Claude is reading the league…' : result ? 'Ask again' : 'Get suggestions'}
+          {loading ? 'Reading the league…' : result ? 'Ask again →' : 'Get suggestions →'}
         </button>
       }
     >
       {!result && !loading && !error ? (
-        <p className="px-4 py-4 text-[11.5px] text-text-faint leading-relaxed max-w-3xl">
-          Claude reads every roster in the league, each team&apos;s record and standing, the engine&apos;s trade ideas
-          and the waiver board, then names the few moves that would help your team most. Every trade it suggests is
-          checked against the live rosters and graded by the engine before it shows up here. Takes about half a minute.
+        <p className="px-4 py-4 text-[14px] text-text-faint leading-relaxed max-w-3xl">
+          Claude reads every roster, record and the waiver board, then names the few moves that would help you most.
+          Every trade is checked against the live rosters and graded for both sides. Takes about half a minute.
         </p>
       ) : null}
 
       {loading ? (
-        <p className="px-4 py-4 text-[11.5px] text-text-faint" aria-live="polite">
+        <p className="px-4 py-4 font-mono text-[11px] tracking-[0.08em] uppercase text-text-faint pulse" aria-live="polite">
           Reading {isDynasty ? 'rosters, picks' : 'rosters'}, records and the waiver board…
         </p>
       ) : null}
 
       {error ? (
-        <p className="num px-4 py-4 text-[11px] text-fade" role="status">
+        <p className="num px-4 py-4 text-[12px] text-fade" role="status">
           {error}
         </p>
       ) : null}
@@ -78,7 +78,7 @@ export function AiGm({ leagueId, week, isDynasty }: { leagueId: string; week: nu
       {result && !loading ? (
         <div>
           {result.summary ? (
-            <p className="px-4 py-3 text-[12.5px] text-text-dim leading-relaxed border-b border-rule">{result.summary}</p>
+            <p className="px-4 py-3 text-[15px] text-text-dim leading-relaxed border-b border-rule">{result.summary}</p>
           ) : null}
           <ol>
             {result.moves.map((move, i) => (
@@ -86,10 +86,10 @@ export function AiGm({ leagueId, week, isDynasty }: { leagueId: string; week: nu
             ))}
           </ol>
           {result.moves.length === 0 ? (
-            <p className="px-4 py-4 text-[12px] text-text-faint">No moves survived the roster check. Try again.</p>
+            <p className="px-4 py-4 text-[14px] text-text-faint">None of Claude&apos;s moves checked out against the live rosters. Ask again.</p>
           ) : null}
           {result.rejected.length > 0 ? (
-            <p className="px-4 py-2.5 text-[10.5px] text-text-faint border-t border-rule/60">
+            <p className="px-4 py-2.5 text-[12px] text-text-faint border-t border-rule">
               Dropped {result.rejected.length} suggestion{result.rejected.length === 1 ? '' : 's'} that didn&apos;t check
               out: {result.rejected.map((r) => `${r.headline} (${r.reason})`).join('; ')}
             </p>
@@ -124,10 +124,8 @@ function MoveRow({
   return (
     <li className="px-4 py-3.5 border-b border-rule/60 last:border-0 rise" style={{ animationDelay: `${index * 40}ms` }}>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="num text-[10px] text-text-faint">{String(index + 1).padStart(2, '0')}</span>
-        <span className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-text-faint tracking-wider">
-          {KIND_LABEL[move.kind]}
-        </span>
+        <span className="figure text-[22px] leading-none text-signal">{String(index + 1).padStart(2, '0')}</span>
+        <Tag tone={move.kind === 'trade' ? 'solid' : move.kind === 'waiver' ? 'accent' : 'muted'}>{KIND_LABEL[move.kind]}</Tag>
         {move.kind === 'trade' ? (
           <span className="num text-[10px] ml-auto text-text-faint">
             engine:{' '}
@@ -140,8 +138,8 @@ function MoveRow({
         ) : null}
       </div>
 
-      <p className="text-[13px] text-text font-medium leading-snug mb-1">{move.headline}</p>
-      <p className="text-[11.5px] text-text-dim leading-relaxed mb-2">{move.why}</p>
+      <p className="wide uppercase text-[17px] leading-snug mb-1">{move.headline}</p>
+      <p className="text-[14px] text-text-dim leading-relaxed mb-2">{move.why}</p>
 
       {move.kind === 'trade' ? (
         <>
@@ -152,7 +150,7 @@ function MoveRow({
             </span>
             <PlayerList label={`you get from ${move.offer.partnerName}`} players={move.offer.mine.gets} tone="signal" />
           </div>
-          <p className="text-[11px] text-text-faint leading-relaxed mb-1">{move.offer.call.headline}</p>
+          <p className="text-[13px] text-text-faint leading-relaxed mb-1">{move.offer.call.headline}</p>
           <div className="flex flex-wrap gap-x-6 gap-y-1">
             <Delta label="you" now={move.offer.mine.winNowDelta} future={move.offer.mine.futureDelta} isDynasty={isDynasty} />
             <Delta
@@ -167,7 +165,7 @@ function MoveRow({
       ) : null}
 
       {move.kind === 'waiver' ? (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px]">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[14px]">
           <span className="inline-flex items-center gap-1.5">
             <span className="eyebrow">add</span>
             <PositionTag position={move.waiver.add.position} />

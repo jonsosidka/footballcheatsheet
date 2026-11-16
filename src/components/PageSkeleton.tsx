@@ -11,10 +11,10 @@ import { NavProgress } from '@/components/NavProgress';
  * real page.
  *
  * Every page here is `force-dynamic` and reads the database before it can
- * render, so without a `loading.tsx` a tap did nothing at all until the server
- * finished — seven seconds on Trades. This is prefetched with the link, so the
- * route changes on tap: same header and tab bar in place, the progress bar
- * sweeping, grey blocks where the panels will land.
+ * render, so without a `loading.tsx` a tap did nothing until the server
+ * finished. This is prefetched with the link, so the route changes on tap:
+ * the header and tab bar in place, the progress bar sweeping, the page's own
+ * headline already set, and blocks where the sections will land.
  *
  * It renders the header's shape rather than `AppHeader` itself, because the
  * league switcher and week picker need data the server has not loaded yet.
@@ -22,47 +22,43 @@ import { NavProgress } from '@/components/NavProgress';
  * to another tab mid-load does not drop them.
  */
 export function PageSkeleton({
-  eyebrow,
+  kicker,
   title,
   active,
-  width = 'max-w-[1440px]',
   children,
 }: {
-  eyebrow: string;
+  kicker: string;
+  /** The page's headline, drawn for real so the page reads at once. */
   title: ReactNode;
   /** Route being loaded, for marking the active tab. */
   active: string;
-  width?: string;
-  /** The page body's shape. Defaults to a strip and two panels. */
+  /** The page body's shape. Defaults to a main column and a sidebar. */
   children?: ReactNode;
 }) {
   return (
     <main className="min-h-dvh pb-tabbar" aria-busy="true">
-      <header
-        className="sticky top-0 z-30 border-b border-rule bg-ink/80 backdrop-blur-xl
-          backdrop-saturate-150 pt-safe px-safe"
-      >
-        <div className="md:hidden px-4 pt-2.5 pb-3 space-y-2.5">
-          <div className="eyebrow mb-1 truncate">{eyebrow}</div>
-          <h1 className="font-display text-[1.5rem] leading-none tracking-tight truncate">{title}</h1>
-          <Block className="h-9 w-full" />
-        </div>
-
-        <div className={`hidden md:flex ${width} mx-auto px-6 py-4 items-end gap-5`}>
-          <div>
-            <div className="eyebrow mb-1">{eyebrow}</div>
-            <h1 className="font-display text-[2rem] leading-none tracking-tight">{title}</h1>
-          </div>
-          <div className="h-9 w-px bg-rule" />
+      <div className="h-[30px] bg-accent" aria-hidden="true" />
+      <header className="sticky top-0 z-30 bg-ink border-b border-rule pt-safe px-safe relative">
+        <div className="shell py-3 md:py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <span className="display text-[26px] md:text-[30px] tracking-[-0.035em] leading-[0.9]">
+            CHEATSHEET<sup className="text-[12px] font-bold align-top tracking-normal">®</sup>
+          </span>
           <Suspense fallback={<Nav active={active} />}>
             <CarriedNav active={active} />
           </Suspense>
+          <Block className="h-10 w-[200px] hidden md:block" />
+          <Block className="h-11 w-full md:hidden" />
         </div>
-
         <NavProgress active />
       </header>
 
-      <div className={`${width} mx-auto px-4 sm:px-6 py-4 sm:py-6`}>{children ?? <DefaultBody />}</div>
+      <div className="shell">
+        <section className="py-7 sm:py-9 border-b border-rule">
+          <div className="eyebrow mb-4">{kicker}</div>
+          <h1 className="display text-[clamp(2.75rem,8.5vw,4.75rem)]">{title}</h1>
+        </section>
+        <div className="py-6">{children ?? <DefaultBody />}</div>
+      </div>
 
       <Suspense fallback={<TabBar />}>
         <CarriedTabBar />
@@ -87,7 +83,7 @@ function CarriedTabBar() {
   return <TabBar leagueId={leagueId} week={week} />;
 }
 
-/** A grey placeholder block, breathing slowly. */
+/** A placeholder block, breathing slowly. */
 export function Block({ className = '' }: { className?: string }) {
   return <div className={`bg-ink-hover pulse ${className}`} />;
 }
@@ -95,15 +91,15 @@ export function Block({ className = '' }: { className?: string }) {
 /** A panel's frame with placeholder rows, matching `Panel`. */
 export function PanelSkeleton({ rows = 6, className = '' }: { rows?: number; className?: string }) {
   return (
-    <section className={`bg-ink-card border border-rule ${className}`}>
-      <div className="px-4 py-3 border-b border-rule">
-        <Block className="h-2.5 w-32" />
+    <section className={`border border-rule ${className}`}>
+      <div className="px-4 py-3.5 border-b border-rule">
+        <Block className="h-3 w-40" />
       </div>
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="px-4 py-3.5 border-b border-rule/60 last:border-0 flex items-center gap-3">
-          <Block className="h-3 w-8" />
-          <Block className="h-3 flex-1 max-w-[220px]" />
-          <Block className="h-3 w-12 ml-auto" />
+        <div key={i} className="px-4 py-3.5 border-b border-rule last:border-0 flex items-center gap-3">
+          <Block className="h-4 w-8" />
+          <Block className="h-4 flex-1 max-w-[260px]" />
+          <Block className="h-5 w-12 ml-auto" />
         </div>
       ))}
     </section>
@@ -112,19 +108,9 @@ export function PanelSkeleton({ rows = 6, className = '' }: { rows?: number; cla
 
 function DefaultBody() {
   return (
-    <>
-      <div className="flex flex-wrap gap-6 mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="space-y-1.5">
-            <Block className="h-2 w-16" />
-            <Block className="h-4 w-20" />
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-3 sm:gap-4 items-start">
-        <PanelSkeleton rows={8} />
-        <PanelSkeleton rows={5} />
-      </div>
-    </>
+    <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-4 items-start">
+      <PanelSkeleton rows={8} />
+      <PanelSkeleton rows={5} />
+    </div>
   );
 }

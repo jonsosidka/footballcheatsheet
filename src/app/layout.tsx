@@ -1,28 +1,30 @@
 import type { Metadata, Viewport } from 'next';
-import { Instrument_Serif, Archivo, JetBrains_Mono } from 'next/font/google';
+import { cookies } from 'next/headers';
+import { Archivo, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ResumeRefresh } from '@/components/ResumeRefresh';
+import { THEME_COOKIE, parseTheme } from '@/lib/theme';
 
-const instrument = Instrument_Serif({
-  weight: '400',
-  style: ['normal', 'italic'],
-  subsets: ['latin'],
-  variable: '--font-instrument',
-});
-
+/*
+ * Archivo carries the whole voice: its width axis runs from condensed to
+ * 125% expanded, so the headline face, the player names and the body copy are
+ * one family at three widths rather than three fonts.
+ */
 const archivo = Archivo({
   subsets: ['latin'],
+  axes: ['wdth'],
   variable: '--font-archivo',
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ['latin'],
+  weight: ['400', '700'],
   variable: '--font-jetbrains',
 });
 
 export const metadata: Metadata = {
-  title: 'Football Cheatsheet',
-  description: 'Market-aware lineup and roster management for Sleeper dynasty and redraft leagues.',
+  title: 'Cheatsheet — Fantasy Supply Co.',
+  description: 'Lineup, waiver, trade and draft calls for your Sleeper dynasty and redraft leagues.',
   applicationName: 'Cheatsheet',
   /*
    * Added to the home screen this should launch chromeless, like an app the
@@ -47,30 +49,38 @@ export const viewport: Viewport = {
   initialScale: 1,
   /*
    * `cover` is what makes the safe-area env() values non-zero — without it iOS
-   * letterboxes the page inside the notch cutout instead of letting the header
-   * blur run to the physical top edge.
+   * letterboxes the page inside the notch cutout.
    */
   viewportFit: 'cover',
-  // Matches --color-ink, so the status bar and the pull-down overscroll are
-  // the same near-black as the page.
-  themeColor: '#08090b',
+  // Matches --color-ink in each theme, so the status bar and the overscroll
+  // are the same colour as the page.
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#0b0b0c' },
+    { media: '(prefers-color-scheme: light)', color: '#f2f0ea' },
+  ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  /*
+   * The theme is read on the server so the first paint is already right. With
+   * no cookie the attribute is left off and the stylesheet follows the
+   * system; the toggle writes the cookie once someone picks.
+   */
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+
   return (
     /*
      * The font variables belong on <html>, not <body>: globals.css composes
-     * them at `:root` (`--font-body: var(--font-archivo), sans-serif`), and a
-     * custom property resolves in the scope it is *declared* in. Declared one
-     * level below, --font-archivo was invisible to that composition, so
-     * --font-body resolved to nothing and the whole app fell back to Times.
+     * them at `:root`, and a custom property resolves in the scope it is
+     * declared in.
      */
     <html
       lang="en"
-      className={`${instrument.variable} ${archivo.variable} ${jetbrains.variable}`}
+      data-theme={theme ?? undefined}
+      className={`${archivo.variable} ${jetbrains.variable}`}
     >
       <body className="antialiased">
-        <div className="relative z-10">{children}</div>
+        {children}
         <ResumeRefresh />
       </body>
     </html>

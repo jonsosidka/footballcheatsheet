@@ -1,17 +1,16 @@
 import Link from 'next/link';
 
 /**
- * Desktop route switcher. On phones `TabBar` takes over — these 11px links
- * are far too small a target for a thumb, and a bottom bar is the presentation
- * an iOS user expects for top-level navigation anyway.
+ * Desktop route switcher: numbered, mono, the current page in lime with a
+ * rule under it. On phones `TabBar` takes over.
  */
-const TABS = [
-  { href: '/', label: 'Dashboard' },
+export const ROUTES = [
+  { href: '/', label: 'My Team' },
   { href: '/draft', label: 'Draft' },
   { href: '/waivers', label: 'Waivers' },
   { href: '/trades', label: 'Trades' },
   { href: '/setup', label: 'Setup' },
-];
+] as const;
 
 export function Nav({ active, leagueId, week }: { active: string; leagueId?: string; week?: number }) {
   const query = new URLSearchParams();
@@ -20,21 +19,22 @@ export function Nav({ active, leagueId, week }: { active: string; leagueId?: str
   const suffix = query.toString() ? `?${query.toString()}` : '';
 
   return (
-    <nav className="hidden md:flex items-center gap-1">
-      {TABS.map((tab) => (
-        <Link
-          key={tab.href}
-          href={`${tab.href}${suffix}`}
-          aria-current={tab.href === active ? 'page' : undefined}
-          className={`px-3 py-1.5 text-[11px] border transition-colors ${
-            tab.href === active
-              ? 'border-rule-bright bg-ink-hover text-text'
-              : 'border-transparent text-text-faint hover:text-text-dim'
-          }`}
-        >
-          {tab.label}
-        </Link>
-      ))}
+    <nav aria-label="Primary" className="chrome hidden md:flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px] tracking-[0.06em] uppercase">
+      {ROUTES.map((route, i) => {
+        const current = route.href === active;
+        return (
+          <Link
+            key={route.href}
+            href={`${route.href}${suffix}`}
+            aria-current={current ? 'page' : undefined}
+            className={`py-2 border-b-2 no-underline transition-colors focus-ring ${
+              current ? 'text-signal border-signal' : 'text-text border-transparent hover:border-rule-bright'
+            }`}
+          >
+            {String(i + 1).padStart(2, '0')} {route.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

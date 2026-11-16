@@ -2,7 +2,9 @@ import { Suspense } from 'react';
 import { getTradeView } from '@/lib/data/trades';
 import type { TradeIdea } from '@/lib/engine/trades';
 import { listLeagues } from '@/lib/data/dashboard';
-import { Panel } from '@/components/primitives';
+import Link from 'next/link';
+import { Panel, PageHero, SpecGrid, Label, Tag, EmptyState, HowItWorks, ChromeFigure } from '@/components/primitives';
+import { SiteFooter } from '@/components/SiteFooter';
 import { PanelSkeleton } from '@/components/PageSkeleton';
 import { AppHeader } from '@/components/AppHeader';
 import { TradeBuilder } from '@/components/TradeBuilder';
@@ -23,98 +25,134 @@ export default async function TradesPage({
 
   if (!view) {
     return (
-      <main className="min-h-dvh grid place-items-center">
-        <p className="text-[13px] text-text-dim">No leagues imported yet.</p>
+      <main className="min-h-dvh pb-tabbar">
+        <AppHeader active="/trades" leagues={leagues} />
+        <div className="shell">
+          <EmptyState
+            kicker="[ Trades ]"
+            title={
+              <>
+                No league.
+                <br />
+                <span className="outline-text">Yet.</span>
+              </>
+            }
+            action={
+              <Link href="/setup" className="btn btn-primary">
+                Import from Sleeper →
+              </Link>
+            }
+          >
+            Import a league in setup and the trade finder reads every roster in it.
+          </EmptyState>
+        </div>
+        <SiteFooter />
       </main>
     );
   }
 
+  const myIndex = view.partners.findIndex((p) => p.isMe);
+  const me = view.partners[myIndex];
+
   return (
     <main className="min-h-dvh pb-tabbar">
       <AppHeader
-        eyebrow={`Week ${week} · trade finder`}
-        title={
-          <>
-            Trade <em className="text-signal not-italic">Targets</em>
-          </>
-        }
         active="/trades"
         leagues={leagues}
         activeLeagueId={view.leagueId}
         week={week}
         liveWeek={liveWeek}
+        division={view.isDynasty ? 'DYNASTY DIV.' : 'REDRAFT DIV.'}
+        strip={[`Week ${week} trade desk`, `${view.partners.length} teams on the board`, 'Both sides graded']}
       />
 
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
-        <p className="text-[11.5px] text-text-faint max-w-3xl leading-relaxed mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
-          Saw someone on the trade block? Pick their team, tap who you want, and the builder works out what it would
-          take from your side — every package scored under both objectives, cheapest acceptable first. Below it, the
-          finder sweeps the whole league for trades nobody has asked for yet.
-          {view.isDynasty ? (
+      <div className="shell">
+        <PageHero
+          kicker={`[ Week ${week} ] — Trade desk — ${view.isDynasty ? 'dynasty' : 'redraft'}`}
+          title={
             <>
-              {' '}
-              Rookie picks are on the table too: every team&apos;s inventory is synced from Sleeper, traded picks
-              included, and priced at market — next year&apos;s by where the original owner is tracking to finish.
+              Buy low.
+              <br />
+              <span className="outline-text">Sell high.</span>
             </>
-          ) : null}
-        </p>
+          }
+          aside={
+            <>
+              <ChromeFigure label="Your rank / starting strength" value={myIndex >= 0 ? `#${myIndex + 1}` : '—'}>
+                OF {view.partners.length} TEAMS
+              </ChromeFigure>
+              <SpecGrid
+                items={[
+                  { label: 'Outlook', value: me?.posture ?? '—' },
+                  { label: 'Buyers', value: String(view.partners.filter((p) => !p.isMe && p.posture === 'contend').length) },
+                  { label: 'Sellers', value: String(view.partners.filter((p) => !p.isMe && p.posture === 'rebuild').length) },
+                ]}
+              />
+              <Label seed={`${view.leagueId}:trades:${week}`} sku={`TRD-W${week}-${view.partners.length}`} />
+            </>
+          }
+        >
+          <p>
+            Saw someone on the trade block? Pick their team, tap who you want, and get offers built from your
+            roster — every one graded for both sides, so you only send deals they&apos;d take.
+          </p>
+        </PageHero>
 
-        <div className="mb-3 sm:mb-4">
+        <div className="py-6 space-y-4">
           <AiGm leagueId={view.leagueId} week={week} isDynasty={view.isDynasty} />
-        </div>
-
-        <div className="mb-3 sm:mb-4">
           <TradeBuilder leagueId={view.leagueId} week={week} isDynasty={view.isDynasty} teams={view.rosters} />
-        </div>
-
-        <p className="text-[11.5px] text-text-faint max-w-3xl leading-relaxed mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
-          Every idea is scored twice — once under your objective and once under the other manager&apos;s, using{' '}
-          <em className="not-italic text-text-dim">their</em> posture, roster holes and age profile. Only mutual gains
-          are shown, because a proposal the other side declines is worth less than no proposal. Win-now value is the
-          change in each team&apos;s optimal starting lineup, re-solved after the trade.
-        </p>
 
         <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-3 sm:gap-4 items-start">
           <Suspense fallback={<PanelSkeleton rows={8} />}>
             <TradeIdeas ideas={view.ideas} isDynasty={view.isDynasty} />
           </Suspense>
 
-          <Panel title="League postures" meta="strongest first">
-            <ul>
-              {view.partners.map((p) => (
+          <Panel index={4} title="Who's buying" meta="strongest first">
+            <ol>
+              {view.partners.map((p, i) => (
                 <li
                   key={p.rosterId}
-                  className="px-4 py-2.5 border-b border-rule/60 last:border-0 flex items-center gap-2.5"
+                  className={`px-4 py-2 border-b border-rule last:border-0 flex items-center gap-2.5 ${
+                    p.isMe ? 'bg-accent text-on-accent' : ''
+                  }`}
                 >
-                  <span className="num text-[10px] text-text-faint w-4">{p.isMe ? '►' : ''}</span>
-                  <span className={`text-[12.5px] truncate ${p.isMe ? 'text-signal' : 'text-text-dim'}`}>{p.name}</span>
-                  <span
-                    className="num text-[9px] px-1.5 py-0.5 border tracking-wider ml-auto"
-                    style={{
-                      color:
-                        p.posture === 'contend'
-                          ? 'var(--color-signal)'
-                          : p.posture === 'rebuild'
-                            ? 'var(--color-fade)'
-                            : 'var(--color-warn)',
-                      borderColor: 'var(--color-rule-bright)',
-                    }}
-                  >
-                    {p.posture.toUpperCase()}
+                  <span className="figure text-[20px] w-[28px] leading-none">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="flex-1 min-w-0 truncate font-bold [font-stretch:112%] uppercase text-[13px]">
+                    {p.name}
+                    {p.isMe ? ' (you)' : ''}
                   </span>
-                  <span className="num text-[10px] text-text-faint w-[48px] text-right">{p.strength.toFixed(1)}</span>
+                  {p.isMe ? (
+                    <span className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase">{p.posture}</span>
+                  ) : (
+                    <Tag tone={p.posture === 'contend' ? 'outline' : p.posture === 'rebuild' ? 'fade' : 'muted'}>
+                      {p.posture === 'contend' ? 'Buyer' : p.posture === 'rebuild' ? 'Seller' : 'Bubble'}
+                    </Tag>
+                  )}
                 </li>
               ))}
-            </ul>
-            <div className="px-4 py-3 border-t border-rule">
-              <p className="text-[11px] text-text-faint leading-relaxed">
-                Trades happen when two teams want different things. Sellers here are your natural partners for
-                win-now pieces; buyers are where your youth commands a premium.
-              </p>
-            </div>
+            </ol>
+            <p className="px-4 py-3 border-t border-rule text-[13px] text-text-faint leading-relaxed">
+              Sellers want youth and picks for their vets. Buyers pay up for players who score now.
+            </p>
           </Panel>
         </div>
+
+        <HowItWorks>
+          <p>
+            Every trade is scored twice — once for you and once for the other manager, using their outlook, roster
+            holes and age profile. Only deals that help both sides are shown, because an offer they decline is worth
+            less than no offer. &ldquo;Now&rdquo; is the change in each team&apos;s best starting lineup after the trade.
+          </p>
+          {view.isDynasty ? (
+            <p>
+              Rookie picks count too. Each team&apos;s picks come from Sleeper, traded picks included, priced at market —
+              next year&apos;s by where the original owner is on track to finish.
+            </p>
+          ) : null}
+        </HowItWorks>
+        </div>
       </div>
+      <SiteFooter />
     </main>
   );
 }
@@ -123,11 +161,11 @@ export default async function TradesPage({
 async function TradeIdeas({ ideas: pending, isDynasty }: { ideas: Promise<TradeIdea[]>; isDynasty: boolean }) {
   const ideas = await pending;
   return (
-    <Panel title="Mutually beneficial trades" accent meta={`${ideas.length} found`}>
+    <Panel index={3} title="Deals that help both sides" meta={`${ideas.length} found`}>
       {ideas.length === 0 ? (
-        <p className="px-4 py-8 text-[12px] text-text-faint">
-          No trade improves both rosters right now. That usually means the league is postured similarly — check
-          back once records separate contenders from sellers.
+        <p className="px-4 py-8 text-[14px] text-text-faint">
+          No trade helps both teams right now. That usually means everyone wants the same thing — check back once
+          records split the buyers from the sellers.
         </p>
       ) : (
         <ul>
@@ -139,9 +177,11 @@ async function TradeIdeas({ ideas: pending, isDynasty }: { ideas: Promise<TradeI
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="eyebrow">with</span>
-                <span className="text-[12.5px] text-text-dim">{idea.partnerName}</span>
-                <span className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-text-faint ml-auto">
-                  {idea.valueRatio.toFixed(2)}× value
+                <span className="wide uppercase text-[15px]">{idea.partnerName}</span>
+                <span className="ml-auto">
+                  <Tag tone="muted" title="Market value you send ÷ market value you get">
+                    {idea.valueRatio.toFixed(2)}× value
+                  </Tag>
                 </span>
               </div>
 
@@ -156,7 +196,7 @@ async function TradeIdeas({ ideas: pending, isDynasty }: { ideas: Promise<TradeI
                 <PlayerList label="you get" players={idea.mine.gets} tone="signal" />
               </div>
 
-              <p className="text-[11.5px] text-text-faint leading-relaxed mb-2">{idea.rationale}</p>
+              <p className="text-[13px] text-text-faint leading-relaxed mb-2">{idea.rationale}</p>
 
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 <Delta label="you" now={idea.mine.winNowDelta} future={idea.mine.futureDelta} isDynasty={isDynasty} />

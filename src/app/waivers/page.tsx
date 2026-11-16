@@ -1,9 +1,12 @@
 import { getWaiverView } from '@/lib/data/waivers';
 import { listLeagues } from '@/lib/data/dashboard';
-import { Panel, PositionTag, InjuryTag } from '@/components/primitives';
+import Link from 'next/link';
+import { Panel, PositionTag, InjuryTag, Tag, PageHero, SpecGrid, ChromeFigure, EmptyState, HowItWorks } from '@/components/primitives';
 import { AppHeader } from '@/components/AppHeader';
+import { SiteFooter } from '@/components/SiteFooter';
 import { RefreshButton } from '@/components/RefreshButton';
 import { resolveWeek } from '@/lib/data/week';
+import { lastName } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,27 +20,30 @@ export default async function WaiversPage({
   const view = await getWaiverView(params.league, week);
 
   if (!view) {
-    return (
-      <main className="min-h-dvh grid place-items-center">
-        <p className="text-[13px] text-text-dim">No leagues imported yet.</p>
-      </main>
-    );
+    return <NoLeague leagues={leagues} />;
   }
+
+  const top = view.suggestions[0];
+  // Section numbers follow what is actually on the page.
+  let section = 0;
+  const next = () => ++section;
 
   return (
     <main className="min-h-dvh pb-tabbar">
       <AppHeader
-        eyebrow={`Week ${week} · waiver board`}
-        title={
-          <>
-            Add <em className="text-signal not-italic">/</em> Drop
-          </>
-        }
         active="/waivers"
         leagues={leagues}
         activeLeagueId={view.leagueId}
         week={week}
         liveWeek={liveWeek}
+        division={view.isDynasty ? 'DYNASTY DIV.' : 'REDRAFT DIV.'}
+        strip={[
+          `Week ${week} wire`,
+          view.suggestions.length > 0
+            ? `${view.suggestions.length} move${view.suggestions.length === 1 ? '' : 's'} ranked`
+            : 'Nothing worth a claim',
+          `${view.freeAgentCount.toLocaleString()} free agents scanned`,
+        ]}
         actions={
           <RefreshButton
             leagueId={view.leagueId}
@@ -47,33 +53,74 @@ export default async function WaiversPage({
         }
       />
 
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
-        {/* context strip */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-x-6 sm:gap-x-8 gap-y-3 mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule">
-          <Bit label="Posture" value={view.posture} tone="signal" />
-          <Bit label="Open roster spots" value={String(view.openSlots)} />
-          {view.waiverSystem === 'faab' ? (
-            <Bit
-              label="FAAB remaining"
-              value={`$${view.faabRemaining ?? 0} / $${view.faabTotal ?? 0}`}
-              tone="signal"
-            />
-          ) : (
-            <Bit label="Waiver position" value={view.waiverPosition ? `#${view.waiverPosition}` : '—'} />
-          )}
-          <Bit label="Free agents scanned" value={view.freeAgentCount.toLocaleString()} />
-          <p className="col-span-2 text-[11px] text-text-faint sm:max-w-md leading-relaxed sm:ml-auto">
-            {view.isDynasty
-              ? `Ranked on a ${view.posture} posture — win-now points and future asset value are weighted accordingly.`
-              : 'Redraft league: ranked purely on rest-of-season points added to your starting lineup.'}
+      <div className="shell">
+        <PageHero
+          kicker={`[ Week ${week} ] — Waiver board — ${view.isDynasty ? 'dynasty' : 'redraft'}`}
+          title={
+            top ? (
+              <>
+                Add
+                <br />
+                {lastName(top.add.name)}.
+                <br />
+                <span className="outline-text">
+                  {top.drop ? (
+                    <>
+                      Drop
+                      <br />
+                      {lastName(top.drop.name)}.
+                    </>
+                  ) : (
+                    <>
+                      Open
+                      <br />
+                      spot.
+                    </>
+                  )}
+                </span>
+              </>
+            ) : (
+              <>
+                Wire&apos;s
+                <br />
+                <span className="outline-text">dry.</span>
+              </>
+            )
+          }
+          aside={
+            <>
+              {view.waiverSystem === 'faab' ? (
+                <ChromeFigure label="FAAB remaining" value={`$${view.faabRemaining ?? 0}`}>
+                  OF ${view.faabTotal ?? 0} BUDGET
+                </ChromeFigure>
+              ) : (
+                <ChromeFigure label="Waiver position" value={view.waiverPosition ? `#${view.waiverPosition}` : '—'}>
+                  ROLLING PRIORITY
+                </ChromeFigure>
+              )}
+              <SpecGrid
+                items={[
+                  { label: 'Outlook', value: view.posture },
+                  { label: 'Open spots', value: String(view.openSlots) },
+                  { label: 'Scanned', value: view.freeAgentCount.toLocaleString() },
+                ]}
+              />
+            </>
+          }
+        >
+          <p>
+            {top
+              ? top.rationale
+              : 'Nothing on the wire improves your roster right now. That is a good sign — check back after the next round of injuries.'}
           </p>
-        </div>
+        </PageHero>
 
+        <div className="py-6">
         <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-3 sm:gap-4 items-start">
-          <Panel title="Recommended moves" accent meta={`${view.suggestions.length} ranked`}>
+          <Panel index={next()} title="Recommended moves" accent meta={`${view.suggestions.length} ranked`}>
             {view.suggestions.length === 0 ? (
-              <p className="px-4 py-8 text-[12px] text-text-faint">
-                Nothing on the wire improves this roster. That is a good sign.
+              <p className="px-4 py-8 text-[14px] text-text-faint">
+                No free agent beats what you already have at any position.
               </p>
             ) : (
               <ul>
@@ -93,44 +140,31 @@ export default async function WaiversPage({
                           <span className="num text-[10px] text-text-faint sm:hidden">
                             {String(i + 1).padStart(2, '0')}
                           </span>
-                          <span className="num text-[9px] px-1.5 py-0.5 border border-signal/30 bg-signal/10 text-signal tracking-wider">
-                            ADD
-                          </span>
+                          <Tag tone="accent">Add</Tag>
                           <PositionTag position={s.add.position} />
-                          <span className="text-[13.5px]">{s.add.name}</span>
+                          <span className="wide uppercase text-[16px]">{s.add.name}</span>
                           <span className="num text-[10px] text-text-faint">{s.add.team}</span>
                           <InjuryTag status={s.add.injuryStatus} />
                           {s.streamDelta >= 2 ? (
-                            <span
-                              className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
-                              style={{
-                                color: 'var(--color-signal)',
-                                borderColor: 'rgba(80,220,160,0.3)',
-                                background: 'rgba(80,220,160,0.08)',
-                              }}
-                            >
-                              +{s.streamDelta.toFixed(1)} WK {week}
-                            </span>
+                            <Tag tone="outline">+{s.streamDelta.toFixed(1)} wk {week}</Tag>
                           ) : null}
 
                           {s.drop ? (
                             <>
-                              <span className="text-text-faint text-[11px] mx-1">for</span>
-                              <span className="num text-[9px] px-1.5 py-0.5 border border-fade/30 bg-fade/10 text-fade tracking-wider">
-                                DROP
-                              </span>
+                              <span className="font-mono text-text-faint text-[11px] mx-1">FOR</span>
+                              <Tag tone="fade">Drop</Tag>
                               <PositionTag position={s.drop.position} />
-                              <span className="text-[12.5px] text-text-dim">{s.drop.name}</span>
+                              <span className="text-[14px] text-text-dim">{s.drop.name}</span>
                             </>
                           ) : null}
                         </div>
 
-                        <p className="text-[11.5px] text-text-faint leading-relaxed">{s.rationale}</p>
+                        <p className="text-[13px] text-text-faint leading-relaxed">{s.rationale}</p>
                         {s.bid && s.bid.amount > 0 ? (
-                          <p className="text-[10.5px] text-signal-dim mt-1">{s.bid.rationale}</p>
+                          <p className="text-[12px] text-signal mt-1">{s.bid.rationale}</p>
                         ) : null}
                         {s.priority ? (
-                          <p className="text-[10.5px] text-text-faint mt-1">{s.priority.rationale}</p>
+                          <p className="text-[12px] text-text-faint mt-1">{s.priority.rationale}</p>
                         ) : null}
                       </div>
 
@@ -139,24 +173,16 @@ export default async function WaiversPage({
                         {s.bid && s.bid.amount > 0 ? (
                           <div className="flex items-baseline justify-end gap-1.5">
                             <span className="eyebrow">bid</span>
-                            <span className="num text-[13px] text-signal">
+                            <span className="figure text-[20px] text-signal">
                               ${s.bid.low}–{s.bid.high}
                             </span>
                           </div>
                         ) : null}
                         {s.priority ? (
                           <div className="flex items-center justify-end">
-                            <span
-                              className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
-                              style={{
-                                color: s.priority.worthBurning ? 'var(--color-signal)' : 'var(--color-text-faint)',
-                                borderColor: s.priority.worthBurning
-                                  ? 'rgba(201,242,77,0.3)'
-                                  : 'var(--color-rule-bright)',
-                              }}
-                            >
-                              {s.priority.worthBurning ? 'CLAIM' : 'WAIT'}
-                            </span>
+                            <Tag tone={s.priority.worthBurning ? 'accent' : 'muted'}>
+                              {s.priority.worthBurning ? 'Claim now' : 'Wait'}
+                            </Tag>
                           </div>
                         ) : null}
                       </div>
@@ -169,18 +195,17 @@ export default async function WaiversPage({
 
           <div className="space-y-4">
             {view.blocked.length > 0 ? (
-              <Panel title="Blocked — trade targets" meta={`${view.blocked.length}`}>
-                <p className="px-4 pt-3 text-[11px] text-text-faint leading-relaxed">
-                  Worth having, but your roster is full and nothing on it is worth cutting for them. These are trade
-                  targets rather than waiver claims.
+              <Panel index={next()} title="Trade targets" meta="roster full">
+                <p className="px-4 pt-3 text-[13px] text-text-faint leading-relaxed">
+                  Worth having, but nobody on your roster is worth cutting for them. Get them in a trade instead.
                 </p>
                 <ul className="pb-1">
                   {view.blocked.map((s) => (
                     <li key={s.add.playerId} className="px-4 py-2 flex items-center gap-2">
                       <PositionTag position={s.add.position} />
-                      <span className="text-[12.5px] text-text-dim truncate">{s.add.name}</span>
+                      <span className="text-[14px] text-text truncate">{s.add.name}</span>
                       <span className="num text-[10px] text-text-faint">{s.add.team}</span>
-                      <span className="num text-[11px] ml-auto text-signal-dim">
+                      <span className="num text-[12px] font-bold ml-auto text-signal">
                         +{s.score.winNowDelta.toFixed(1)}
                       </span>
                     </li>
@@ -190,25 +215,15 @@ export default async function WaiversPage({
             ) : null}
 
             {view.byeGaps.length > 0 ? (
-              <Panel title="Bye-week gaps" meta={`through wk ${view.lastRegularWeek}`} accent>
-                <p className="px-4 pt-3 text-[11px] text-text-faint leading-relaxed">
-                  Weeks where byes leave you unable to field a full lineup. Solve these early — the wire is picked
-                  over by the time everyone notices.
+              <Panel index={next()} title="Bye-week gaps" meta={`through wk ${view.lastRegularWeek}`}>
+                <p className="px-4 pt-3 text-[13px] text-text-faint leading-relaxed">
+                  Weeks where byes leave you short a starter. Fix them early, before the wire is picked over.
                 </p>
                 <ul className="pt-1">
                   {view.byeGaps.slice(0, 6).map((g, i) => (
                     <li key={`${g.week}-${g.position}-${i}`} className="px-4 py-2.5 border-b border-rule/60 last:border-0">
                       <div className="flex items-center gap-2.5 mb-1">
-                        <span
-                          className="num text-[10px] px-1.5 py-0.5 border tracking-wider"
-                          style={{
-                            color: g.severity === 'critical' ? 'var(--color-crit)' : 'var(--color-warn)',
-                            borderColor:
-                              g.severity === 'critical' ? 'rgba(255,77,106,0.3)' : 'rgba(255,179,64,0.3)',
-                          }}
-                        >
-                          WK {g.week}
-                        </span>
+                        <Tag tone={g.severity === 'critical' ? 'crit' : 'warn'}>Wk {g.week}</Tag>
                         <PositionTag position={g.position} />
                         <span className="num text-[10px] text-text-faint">
                           need {g.required}, have {g.available}
@@ -221,8 +236,8 @@ export default async function WaiversPage({
                         </span>
                       </div>
                       {g.onBye.length > 0 ? (
-                        <div className="text-[10.5px] text-text-faint truncate">
-                          out: {g.onBye.slice(0, 4).map((x) => x.name).join(', ')}
+                        <div className="text-[12px] text-text-faint truncate">
+                          Out: {g.onBye.slice(0, 4).map((x) => x.name).join(', ')}
                         </div>
                       ) : null}
                     </li>
@@ -231,7 +246,7 @@ export default async function WaiversPage({
               </Panel>
             ) : null}
 
-            <Panel title="Positional need" meta="thinnest first">
+            <Panel index={next()} title="Positional need" meta="thinnest first">
               <ul>
                 {view.needs.slice(0, 8).map((n) => (
                   <li key={n.position} className="px-4 py-2.5 border-b border-rule/60 last:border-0">
@@ -242,31 +257,31 @@ export default async function WaiversPage({
                       </span>
                       <span
                         className="num text-[11px] ml-auto"
-                        style={{ color: n.needScore > 0.5 ? 'var(--color-warn)' : 'var(--color-text-faint)' }}
+                        style={{ color: n.needScore > 0.5 ? 'var(--color-signal)' : 'var(--color-text-faint)' }}
                       >
                         {Math.round(n.needScore * 100)}
                       </span>
                     </div>
-                    <div className="h-[3px] bg-rule overflow-hidden">
+                    <div className="h-[4px] bg-rule overflow-hidden">
                       <div
                         className="sweep h-full"
                         style={{
                           width: `${n.needScore * 100}%`,
                           background:
-                            n.needScore > 0.5 ? 'var(--color-warn)' : 'var(--color-rule-bright)',
+                            n.needScore > 0.5 ? 'var(--color-signal)' : 'var(--color-rule-bright)',
                         }}
                       />
                     </div>
-                    <div className="mt-1 num text-[9.5px] text-text-faint">
-                      incumbent {n.incumbentPoints.toFixed(0)} · replacement {n.replacementPoints.toFixed(0)}
+                    <div className="mt-1 num text-[10px] text-text-faint">
+                      your starter {n.incumbentPoints.toFixed(0)} · best free agent {n.replacementPoints.toFixed(0)}
                     </div>
                   </li>
                 ))}
               </ul>
             </Panel>
 
-            <Panel title="How this is ranked">
-              <div className="px-4 py-3.5 space-y-2.5 text-[11.5px] text-text-faint leading-relaxed">
+            <HowItWorks>
+              <div className="space-y-2.5">
                 <p>
                   Value over replacement uses the best <em className="text-text-dim not-italic">actually available</em>{' '}
                   free agent at each position, not a fixed rank — so a barren 14-team wire correctly makes marginal
@@ -287,22 +302,44 @@ export default async function WaiversPage({
                   )}
                 </p>
               </div>
-            </Panel>
+            </HowItWorks>
           </div>
         </div>
+        </div>
       </div>
+      <SiteFooter />
     </main>
   );
 }
 
-function Bit({ label, value, tone }: { label: string; value: string; tone?: 'signal' }) {
+function NoLeague({ leagues }: { leagues: Awaited<ReturnType<typeof listLeagues>> }) {
   return (
-    <div>
-      <div className="eyebrow mb-1">{label}</div>
-      <div className={`num text-[13px] ${tone === 'signal' ? 'text-signal' : 'text-text'}`}>{value}</div>
-    </div>
+    <main className="min-h-dvh pb-tabbar">
+      <AppHeader active="/waivers" leagues={leagues} />
+      <div className="shell">
+        <EmptyState
+          kicker="[ Waivers ]"
+          title={
+            <>
+              No league.
+              <br />
+              <span className="outline-text">Yet.</span>
+            </>
+          }
+          action={
+            <Link href="/setup" className="btn btn-primary">
+              Import from Sleeper →
+            </Link>
+          }
+        >
+          Import a league in setup and the waiver board ranks every free agent against your roster.
+        </EmptyState>
+      </div>
+      <SiteFooter />
+    </main>
   );
 }
+
 
 /** Two-axis readout so the tradeoff stays visible instead of collapsing to one number. */
 function DualBar({ winNow, future, isDynasty }: { winNow: number; future: number; isDynasty: boolean }) {

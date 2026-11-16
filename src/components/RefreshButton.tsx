@@ -1,17 +1,15 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useSyncExternalStore, useTransition } from 'react';
 import { refreshLeagueAction } from '@/app/actions';
 
 /**
- * Force-resync the league currently on screen.
+ * Force-resync the league currently on screen: "SYNC 09:42".
  *
- * The "last synced" timestamp is rendered from the database on the server
- * rather than held in component state. `revalidatePath` inside the action
- * remounts this component, so any ephemeral success message is wiped before it
- * can be read — and a timestamp read from `sync_state` is more useful anyway,
- * because it's still correct after a reload or when the scheduled job was what
- * refreshed the data.
+ * The time is when the data was last pulled, read from `sync_state` on the
+ * server rather than held here — `revalidatePath` inside the action remounts
+ * this component, and a stored timestamp stays right after a reload or when
+ * the scheduled job did the refreshing.
  */
 export function RefreshButton({
   leagueId,
@@ -33,54 +31,53 @@ export function RefreshButton({
     });
   };
 
+  // The server renders in UTC; the clock is only drawn once we are in the
+  // reader's own timezone, so the two renders never disagree.
+  const hydrated = useSyncExternalStore(noop, () => true, () => false);
+  const stamp = hydrated && lastSyncedAt ? clock(new Date(lastSyncedAt)) : null;
+
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="relative flex">
       <button
         type="button"
         onClick={run}
         disabled={pending}
-        aria-label="Refresh this league"
-        className="press group flex items-center justify-center gap-1.5 border border-rule text-[11px] text-text-dim transition-colors hover:border-signal/40 hover:text-signal disabled:opacity-50 disabled:cursor-wait disabled:hover:border-rule disabled:hover:text-text-dim min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 px-2.5 py-1.5"
+        aria-label={stamp ? `Sync now. Last synced ${stamp}` : 'Sync now'}
         title="Re-pull rosters, projections and betting lines for this league"
+        className="btn btn-solid chrome press disabled:cursor-wait"
       >
         <svg
-          width="11"
-          height="11"
+          width="12"
+          height="12"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           strokeWidth="2.5"
           strokeLinecap="round"
-          className={pending ? 'animate-spin' : 'transition-transform duration-500 group-hover:rotate-180'}
+          className={`md:hidden ${pending ? 'animate-spin' : ''}`}
           aria-hidden="true"
         >
           <path d="M21 12a9 9 0 1 1-2.64-6.36" />
           <path d="M21 3v6h-6" />
         </svg>
-        {/* The icon alone is unambiguous at thumb size; the word costs a third
-            of the phone header's width. */}
-        <span className="hidden md:inline">{pending ? 'Syncing' : 'Refresh'}</span>
+        <span className="hidden md:inline">{pending ? 'Syncing…' : stamp ? `Sync ${stamp}` : 'Sync'}</span>
       </button>
 
       {error ? (
-        <span className="num text-[10px] text-fade max-w-[160px] md:max-w-[220px] leading-tight" role="status">
+        <span
+          role="status"
+          className="absolute right-0 top-full mt-2 w-[220px] z-10 border border-fade bg-ink px-2.5 py-2 font-mono text-[10.5px] leading-snug text-fade"
+        >
           {error}
         </span>
-      ) : (
-        <span className="eyebrow hidden md:inline" role="status">
-          {pending ? 'working' : lastSyncedAt ? `synced ${timeAgo(new Date(lastSyncedAt))}` : 'never synced'}
-        </span>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function timeAgo(then: Date): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - then.getTime()) / 1000));
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+const noop = () => () => {};
+
+/** 24-hour wall clock, the way a label prints it. */
+function clock(at: Date): string {
+  return at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 }

@@ -1,13 +1,37 @@
-import { getDashboard, listLeagues, type DashboardPlayer } from '@/lib/data/dashboard';
-import { Panel, PositionTag, InjuryTag, Stat } from '@/components/primitives';
-import { ordinal } from '@/lib/engine/value';
+import Link from 'next/link';
+import { getDashboard, listLeagues, type DashboardPlayer, type Dashboard } from '@/lib/data/dashboard';
+import {
+  Section,
+  PageHero,
+  ChromeFigure,
+  Sticker,
+  SpecGrid,
+  Label,
+  PositionTag,
+  InjuryTag,
+  Tag,
+  Trend,
+  EmptyState,
+  ActionCard,
+  LeaderLine,
+} from '@/components/primitives';
 import { RefreshButton } from '@/components/RefreshButton';
 import { AppHeader } from '@/components/AppHeader';
+import { SiteFooter } from '@/components/SiteFooter';
 import { resolveWeek } from '@/lib/data/week';
+import { lastName, pad } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage({
+type Change = Dashboard['changes'][number];
+
+const POSTURE_LABEL: Record<string, string> = {
+  contend: 'Contender',
+  bubble: 'Bubble',
+  rebuild: 'Rebuilding',
+};
+
+export default async function MyTeamPage({
   searchParams,
 }: {
   searchParams: Promise<{ league?: string; week?: string }>;
@@ -16,424 +40,376 @@ export default async function DashboardPage({
   const [{ week, liveWeek }, leagues] = await Promise.all([resolveWeek(params.week), listLeagues()]);
   const data = await getDashboard(params.league, week);
 
-  if (!data) return <EmptyState />;
+  if (!data) return <NoLeagues />;
 
   const { league, posture, occupancy } = data;
+  const bench = data.pointsLeftOnBench;
+  const hasGain = bench >= 0.05;
+  const moves = orderMoves(data.changes);
+  const uncovered = data.doNotStart.filter((p) => !data.changes.some((c) => c.outgoing?.playerId === p.playerId));
+  const moveCount = moves.length + uncovered.length;
+
+  const strip = [
+    `Week ${week} drop`,
+    moveCount > 0 ? `${moveCount} lineup change${moveCount === 1 ? '' : 's'} inside` : 'Lineup locked',
+    hasGain ? `+${bench.toFixed(1)} pts on the table` : `${data.optimalPoints.toFixed(1)} projected`,
+  ];
+
+  const header = (
+    <AppHeader
+      active="/"
+      leagues={leagues}
+      activeLeagueId={league.id}
+      week={week}
+      liveWeek={liveWeek}
+      strip={strip}
+      division={league.isDynasty ? 'DYNASTY DIV.' : 'REDRAFT DIV.'}
+      actions={
+        <RefreshButton
+          leagueId={league.id}
+          week={week}
+          lastSyncedAt={data.lastSyncedAt ? data.lastSyncedAt.toISOString() : null}
+        />
+      }
+    />
+  );
+
+  const kicker = [
+    `[ Week ${week} ]`,
+    league.name,
+    `${league.totalRosters}-team ${league.isDynasty ? 'dynasty' : 'redraft'}`,
+    league.isSuperflex ? 'Superflex' : null,
+  ]
+    .filter(Boolean)
+    .join(' — ');
+
+  if (!data.hasRoster) {
+    return (
+      <main className="min-h-dvh pb-tabbar">
+        {header}
+        <div className="shell">
+          <EmptyState
+            kicker={kicker}
+            title={
+              <>
+                Pre-draft.
+                <br />
+                <span className="outline-text">Stand by.</span>
+              </>
+            }
+          >
+            {league.name} hasn&apos;t drafted yet, so there&apos;s no roster to set. Your lineup calls show up here the
+            moment the draft is done.
+          </EmptyState>
+        </div>
+        <SiteFooter />
+      </main>
+    );
+  }
+
+  const myRank = data.leagueStrengths.findIndex((s) => s.isMine) + 1;
+  const incoming = new Set(data.changes.map((c) => c.incoming.playerId));
+  const headline = headlineFor(moves[0], uncovered[0]);
+  const sleeperHref = `https://sleeper.com/leagues/${league.id}/team`;
+  const filled = data.lineup.filter((s) => s.player).length;
 
   return (
     <main className="min-h-dvh pb-tabbar">
-      <AppHeader
-        eyebrow={`Week ${week} · ${league.season}`}
-        title={
-          <>
-            Football <em className="text-signal not-italic">Cheatsheet</em>
-          </>
-        }
-        active="/"
-        leagues={leagues}
-        activeLeagueId={league.id}
-        week={week}
-        liveWeek={liveWeek}
-        actions={
-          <RefreshButton
-            leagueId={league.id}
-            week={week}
-            lastSyncedAt={data.lastSyncedAt ? data.lastSyncedAt.toISOString() : null}
-          />
-        }
-        meta={
-          <>
-            <MetaBit
-              label="Format"
-              value={`${league.totalRosters}-team ${league.isDynasty ? 'dynasty' : 'redraft'}`}
-            />
-            <MetaBit label="Scoring keys" value={String(league.scoringKeyCount)} />
-            <MetaBit
-              label="Market coverage"
-              value={`${data.marketCoverage.withMarket}/${data.marketCoverage.total}`}
-              tone="signal"
-            />
-          </>
-        }
-      />
+      {header}
 
-      {!data.hasRoster ? (
-        <PreDraftNotice name={league.name} />
-      ) : (
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-3 sm:space-y-4">
-          {/* ---------------- hero row ---------------- */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-[1.1fr_1fr_1fr_1.3fr]">
-            <div className="rise bg-ink-card border border-rule p-4 sm:p-5" style={{ animationDelay: '0ms' }}>
-              <Stat
-                label="Points left on bench"
-                value={data.pointsLeftOnBench.toFixed(1)}
-                tone={data.pointsLeftOnBench > 1 ? 'warn' : 'signal'}
-                sub={
-                  data.pointsLeftOnBench > 1 ? (
-                    <>
-                      Your lineup is leaving points on the table.{' '}
-                      <span className="text-warn">{data.changes.length} change{data.changes.length === 1 ? '' : 's'}</span> below.
-                    </>
-                  ) : (
-                    <>Lineup is optimal. Nothing to fix this week.</>
-                  )
-                }
+      <div className="shell">
+        <PageHero
+          kicker={kicker}
+          title={
+            <>
+              {headline.solid[0]}
+              <br />
+              {headline.solid[1]}
+              <br />
+              <span className="outline-text">
+                {headline.outline[0]}
+                <br />
+                {headline.outline[1]}
+              </span>
+            </>
+          }
+          aside={
+            <>
+              <ChromeFigure label="Projected / best lineup" value={data.optimalPoints.toFixed(1)}>
+                NOW {data.currentPoints.toFixed(1)}
+                {hasGain ? <span className="text-signal"> → +{bench.toFixed(1)}</span> : null}
+              </ChromeFigure>
+
+              {hasGain ? <Sticker value={`+${bench.toFixed(1)}`} label="PTS FREE" className="absolute top-6 md:top-9 right-0" /> : null}
+
+              <SpecGrid
+                items={[
+                  { label: 'Outlook', value: posture ? POSTURE_LABEL[posture.posture] ?? posture.posture : '—' },
+                  { label: 'Rank', value: myRank > 0 ? `${myRank} / ${data.leagueStrengths.length}` : '—' },
+                  { label: 'Roster', value: `${occupancy.playersActive} / ${occupancy.totalActiveSlots}` },
+                ]}
               />
-            </div>
 
-            <div className="rise bg-ink-card border border-rule p-4 sm:p-5" style={{ animationDelay: '60ms' }}>
-              <Stat
-                label="Optimal projection"
-                value={data.optimalPoints.toFixed(1)}
-                sub={<>Current starters project <span className="num">{data.currentPoints.toFixed(1)}</span></>}
-              />
-            </div>
+              <Label seed={`${league.id}:${week}`} sku={`${initials(league.name)}-W${week}-${Math.round(data.optimalPoints * 10)}`} />
+            </>
+          }
+        >
+          <p>{summaryFor(data, moves[0], uncovered[0])}</p>
+        </PageHero>
 
-            <div className="rise bg-ink-card border border-rule p-4 sm:p-5 col-span-2 lg:col-span-1" style={{ animationDelay: '120ms' }}>
-              <Stat
-                label="Roster slots"
-                value={`${occupancy.playersActive}/${occupancy.totalActiveSlots}`}
-                sub={
-                  <>
-                    taxi <span className="num">{occupancy.playersOnTaxi}/{occupancy.taxiSlots}</span>
-                    {'  ·  '}
-                    IR <span className="num">{occupancy.playersOnReserve}/{occupancy.reserveSlots}</span>
-                  </>
-                }
-                tone={occupancy.isOverRosterLimit ? 'fade' : 'default'}
-              />
-            </div>
-
-            {posture ? <PostureCard posture={posture} strengths={data.leagueStrengths} /> : <div className="hidden lg:block" />}
-          </div>
-
-          {/* ---------------- main grid ---------------- */}
-          <div className="grid grid-cols-1 xl:grid-cols-[1.55fr_1fr] gap-3 sm:gap-4 items-start">
-            <div className="space-y-3 sm:space-y-4">
-              {data.doNotStart.length > 0 ? (
-                <Panel
-                  title="Do not start"
-                  meta={`${data.doNotStart.length} in your lineup`}
-                >
-                  <ul>
-                    {data.doNotStart.map((p) => (
-                      <li
-                        key={p.playerId}
-                        className="px-4 py-3 border-b border-rule/60 last:border-0"
-                        style={{ borderLeft: '2px solid var(--color-crit)' }}
-                      >
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <PositionTag position={p.position} />
-                          <span className="text-[13px]">{p.name}</span>
-                          <InjuryTag status={p.injuryStatus} playStatus={p.playStatus} />
-                          <span className="num ml-auto text-[13px]" style={{ color: 'var(--color-crit)' }}>
-                            0.0
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[11px] text-text-faint leading-relaxed">
-                          {p.availabilityNote ?? 'He will not play this week.'}
-                          {' '}You have him in your lineup right now — swap him out before kickoff.
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </Panel>
-              ) : null}
+        <div className="flex flex-wrap">
+          {/* ---------------- main column ---------------- */}
+          <div className="flex-[999_1_600px] min-w-0 md:border-r border-rule md:pr-6">
+            <Section index={1} title="The moves" meta={moveCount > 0 ? `${moveCount} to make` : 'none this week'}>
+              {moveCount === 0 ? (
+                <p className="text-[15px] text-text-dim leading-relaxed">
+                  Nothing to change. Your best lineup is already set — check back after the injury report.
+                </p>
+              ) : (
+                <ol className="flex flex-col gap-2.5">
+                  {moves.map((c, i) => (
+                    <MoveCard key={`${c.slot}-${c.incoming.playerId}`} index={i + 1} change={c} href={sleeperHref} first={i === 0} />
+                  ))}
+                  {uncovered.map((p, i) => (
+                    <ActionCard
+                      key={p.playerId}
+                      index={moves.length + i + 1}
+                      emphasis={moves.length + i === 0}
+                      title={`Bench ${lastName(p.name)}.`}
+                      detail={`${statusLine(p)} — no healthy backup on your bench`}
+                      action={
+                        <Link href={`/waivers?league=${league.id}`} className="btn btn-primary">
+                          Find a replacement →
+                        </Link>
+                      }
+                    />
+                  ))}
+                </ol>
+              )}
 
               {data.promoted.length > 0 ? (
-                <Panel title="Next man up" meta="ahead of the feed">
+                <div className="mt-5">
+                  <div className="eyebrow mb-2">Next man up — ahead of the projections</div>
                   <ul>
                     {data.promoted.map((p) => (
-                      <li
-                        key={p.playerId}
-                        className="px-4 py-3 border-b border-rule/60 last:border-0"
-                        style={{ borderLeft: '2px solid var(--color-signal)' }}
-                      >
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <PositionTag position={p.position} />
-                          <span className="text-[13px]">{p.name}</span>
-                          <span className="num text-[9px] px-1.5 py-0.5 border border-signal/30 bg-signal/10 text-signal tracking-wider">
-                            PROMOTED
-                          </span>
-                          <span className="num ml-auto text-[13px] text-signal">
-                            {p.points.toFixed(1)}
-                          </span>
-                        </div>
-                        {p.explanation ? (
-                          <p className="mt-1 text-[11px] text-text-faint leading-relaxed">
-                            {p.explanation}
-                          </p>
-                        ) : null}
+                      <li key={p.playerId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 border-t border-rule">
+                        <Tag tone="accent">Promoted</Tag>
+                        <span className="wide uppercase text-[15px]">{p.name}</span>
+                        <span className="font-mono text-[10px] text-text-faint">{p.position} · {p.team}</span>
+                        <span className="figure text-[18px] ml-auto">{p.points.toFixed(1)}</span>
+                        {p.explanation ? <p className="basis-full text-[13px] text-text-faint leading-relaxed">{p.explanation}</p> : null}
                       </li>
                     ))}
                   </ul>
-                </Panel>
+                </div>
               ) : null}
+            </Section>
 
-              <Panel
-                title="Optimal lineup"
-                accent
-                meta={<span className="hidden lg:inline">game environment</span>}
-              >
-                <table className="w-full">
+            <Section index={2} title="Starting lineup — spec sheet" meta={`${filled} / ${data.lineup.length} slots`}>
+              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                <table className="w-full border-collapse min-w-[560px]">
+                  <thead>
+                    <tr className="font-mono text-[10px] tracking-[0.1em] text-text-faint text-left">
+                      <th className="py-1.5 font-normal">NO.</th>
+                      <th className="py-1.5 px-2 font-normal">SLOT</th>
+                      <th className="py-1.5 px-2 font-normal">PLAYER</th>
+                      <th className="py-1.5 px-2 font-normal">MATCHUP</th>
+                      <th className="py-1.5 px-2 font-normal">LINE</th>
+                      <th className="py-1.5 font-normal text-right">PROJ</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {data.lineup.map((slot, i) => (
-                      <tr
-                        key={`${slot.slot}-${slot.slotIndex}`}
-                        className="border-b border-rule/60 last:border-0 hover:bg-ink-hover transition-colors rise"
-                        style={{ animationDelay: `${140 + i * 22}ms` }}
-                      >
-                        <td className="pl-3 sm:pl-4 py-2.5 sm:py-2 w-[62px] sm:w-[92px]">
-                          <span className="eyebrow text-text-dim">{slot.slot.replace('_', ' ')}</span>
-                        </td>
-                        <td className="py-2.5 sm:py-2 min-w-0">
+                      <tr key={`${slot.slot}-${slot.slotIndex}`} className="border-t border-rule">
+                        <td className="py-3 font-mono text-[11px] text-text-faint w-[34px]">{pad(i + 1)}</td>
+                        <td className="py-3 px-2 font-mono text-[11px] font-bold w-[64px] whitespace-nowrap">{slotLabel(slot.slot)}</td>
+                        <td className="py-3 px-2">
                           {slot.player ? (
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[13px] truncate">{slot.player.name}</span>
-                              <InjuryTag
-                                status={slot.player.injuryStatus}
-                                playStatus={slot.player.playStatus}
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-[13px] text-text-faint italic">empty</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 sm:py-2 w-[46px] sm:w-[52px]">
-                          {slot.player ? <PositionTag position={slot.player.position} /> : null}
-                        </td>
-                        <td className="hidden sm:table-cell py-2 w-[86px]">
-                          {slot.player?.team ? (
-                            <span className="num text-[10px] text-text-faint">
-                              {slot.player.team}
-                              {slot.player.opponent ? ` vs ${slot.player.opponent}` : ''}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="hidden lg:table-cell py-2 w-[112px] text-right pr-1">
-                          {slot.player?.impliedTeamPoints != null ? (
-                            <span className="num text-[10px] text-text-faint">
-                              {slot.player.impliedTeamPoints.toFixed(1)} implied
-                              {slot.player.spread != null
-                                ? ` · ${slot.player.spread < 0 ? '−' : '+'}${Math.abs(slot.player.spread)}`
-                                : ''}
+                            <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                              <span className="wide uppercase text-[16px]">{slot.player.name}</span>
+                              <span className="font-mono text-[10px] text-text-faint">{slot.player.team ?? 'FA'}</span>
+                              {incoming.has(slot.player.playerId) ? <Tag tone="accent">New in</Tag> : null}
+                              <InjuryTag status={slot.player.injuryStatus} playStatus={slot.player.playStatus} />
                             </span>
                           ) : (
-                            <span className="num text-[10px] text-text-faint">—</span>
+                            <span className="font-mono text-[11px] text-text-faint">EMPTY</span>
                           )}
                         </td>
-                        <td className="py-2.5 sm:py-2 pr-3 sm:pr-4 w-[56px] sm:w-[64px] text-right">
-                          <span className="num text-[15px]">{slot.player?.points.toFixed(1) ?? '—'}</span>
+                        <td className="py-3 px-2 font-mono text-[11px] text-text-dim whitespace-nowrap">
+                          {slot.player?.opponent ? `VS ${slot.player.opponent}` : slot.player?.playStatus === 'bye' ? 'BYE' : '—'}
                         </td>
+                        <td className="py-3 px-2 font-mono text-[11px] text-text-faint whitespace-nowrap">{lineFor(slot.player)}</td>
+                        <td className="py-3 text-right figure text-[20px]">{slot.player ? slot.player.points.toFixed(1) : '—'}</td>
                       </tr>
                     ))}
-                    <tr className="border-t border-rule-bright">
-                      <td className="pl-4 py-2.5" colSpan={5}>
-                        <span className="eyebrow">Projected total</span>
+                    <tr className="border-t-2 border-text">
+                      <td colSpan={5} className="py-3 font-mono text-[11px] font-bold tracking-[0.16em]">
+                        TOTAL
                       </td>
-                      <td className="py-2.5 pr-4 text-right">
-                        <span className="num text-[17px] text-signal">{data.optimalPoints.toFixed(1)}</span>
-                      </td>
+                      <td className="py-3 text-right figure text-[26px] text-signal">{data.optimalPoints.toFixed(1)}</td>
                     </tr>
                   </tbody>
                 </table>
-              </Panel>
+              </div>
 
-              {data.changes.length > 0 ? (
-                <Panel title="Suggested changes" meta={`${data.changes.length} move${data.changes.length === 1 ? '' : 's'}`}>
-                  <ul>
-                    {data.changes.map((c, i) => (
-                      <li
-                        key={i}
-                        className="px-4 py-2.5 border-b border-rule/60 last:border-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]"
-                      >
-                        <span className="eyebrow w-[62px] sm:w-[72px] shrink-0">{c.slot.replace('_', ' ')}</span>
-                        <span className="text-signal">{c.incoming.name}</span>
-                        <span className="text-text-faint">over</span>
-                        <span className="text-text-dim line-through decoration-fade/50">
-                          {c.outgoing?.name ?? 'empty'}
-                        </span>
-                        {c.outgoing && !c.outgoing.startable ? (
-                          <span className="num text-[10px]" style={{ color: 'var(--color-crit)' }}>
-                            {c.outgoing.playStatus === 'bye'
-                              ? 'BYE'
-                              : (c.outgoing.injuryStatus ?? 'OUT').toUpperCase()}
-                          </span>
-                        ) : null}
-                        <span className="num ml-auto text-signal">+{c.gain.toFixed(1)}</span>
+              {data.bench.length > 0 ? (
+                <div className="mt-6">
+                  <div className="eyebrow mb-2">Bench</div>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+                    {data.bench.map((p) => (
+                      <li key={p.playerId} className="flex items-center gap-2.5 py-2 border-t border-rule min-w-0">
+                        <PositionTag position={p.position} />
+                        <span className="text-[14px] truncate min-w-0">{p.name}</span>
+                        <InjuryTag status={p.injuryStatus} playStatus={p.playStatus} />
+                        <span className="num text-[12px] text-text-faint ml-auto">{p.points.toFixed(1)}</span>
                       </li>
                     ))}
                   </ul>
-                </Panel>
+                </div>
               ) : null}
+            </Section>
+          </div>
 
-              <Panel title="Bench" meta={`${data.bench.length} players`}>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 px-4 py-3">
-                  {data.bench.slice(0, 18).map((p) => (
-                    <div key={p.playerId} className="flex items-center gap-2 py-1 text-[12px] min-w-0">
-                      <PositionTag position={p.position} />
-                      <span className="truncate text-text-dim">{p.name}</span>
-                      <InjuryTag status={p.injuryStatus} playStatus={p.playStatus} />
-                      <span className="num text-[11px] text-text-faint ml-auto">{p.points.toFixed(1)}</span>
-                    </div>
+          {/* ---------------- sidebar ---------------- */}
+          <aside className="flex-[1_1_320px] min-w-0 md:pl-6">
+            <Section index={3} title="Leaderboard" meta="proj. starters">
+              <ol>
+                {data.leagueStrengths.map((team, i) => (
+                  <li
+                    key={team.rosterId}
+                    className={`flex items-center gap-2.5 py-2 px-2 border-t border-rule ${
+                      team.isMine ? 'bg-accent text-on-accent' : 'text-text'
+                    }`}
+                  >
+                    <span className="figure text-[22px] w-[30px] leading-none">{pad(i + 1)}</span>
+                    <span className="flex-1 min-w-0 truncate font-bold [font-stretch:112%] uppercase text-[13px]">
+                      {team.name}
+                      {team.isMine ? ' (you)' : ''}
+                    </span>
+                    <span className="font-mono text-[10px] tracking-[0.06em]">{team.strength.toFixed(1)}</span>
+                  </li>
+                ))}
+              </ol>
+            </Section>
+
+            {league.isDynasty && data.assets.length > 0 ? (
+              <Section index={4} title="Market" meta={`${(data.totalAssetValue / 1000).toFixed(1)}K roster value`}>
+                <MarketList assets={data.assets} />
+                {data.ageCliff.length > 0 ? (
+                  <p className="mt-3 text-[13px] text-text-faint leading-relaxed">
+                    <span className="font-mono text-[10px] font-bold tracking-[0.12em] text-fade">PAST THE AGE CLIFF </span>
+                    {data.ageCliff.map((p) => `${p.name} (${p.age})`).join(', ')} —{' '}
+                    {posture?.posture === 'contend'
+                      ? 'keep them, they are why you are contending.'
+                      : 'sell now, they lose value fastest while you rebuild.'}
+                  </p>
+                ) : null}
+                <Link href={`/trades?league=${league.id}`} className="btn btn-outline w-full mt-3">
+                  Build a trade →
+                </Link>
+              </Section>
+            ) : null}
+
+            <Section index={league.isDynasty && data.assets.length > 0 ? 5 : 4} title="Roster check">
+              <div>
+                <LeaderLine label="Active" value={`${occupancy.playersActive}/${occupancy.totalActiveSlots}`} />
+                {occupancy.taxiSlots > 0 ? <LeaderLine label="Taxi" value={`${occupancy.playersOnTaxi}/${occupancy.taxiSlots}`} /> : null}
+                {occupancy.reserveSlots > 0 ? <LeaderLine label="IR" value={`${occupancy.playersOnReserve}/${occupancy.reserveSlots}`} /> : null}
+              </div>
+              {data.slotMoves.length > 0 ? (
+                <ul className="mt-3">
+                  {data.slotMoves.map((m, i) => (
+                    <li key={i} className="py-2.5 border-t border-rule">
+                      <div className="flex items-start gap-2">
+                        <Tag tone={m.severity === 'critical' ? 'crit' : m.severity === 'warn' ? 'warn' : 'muted'}>
+                          {m.severity === 'critical' ? 'Now' : m.severity === 'warn' ? 'Soon' : 'Tip'}
+                        </Tag>
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-semibold leading-snug">{m.title}</div>
+                          <div className="text-[13px] text-text-faint leading-relaxed mt-0.5">{m.detail}</div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-[13px] text-text-faint">Every slot is in use. Nothing to tidy up.</p>
+              )}
+              {data.taxi.length + data.reserve.length > 0 ? (
+                <div className="mt-3 pt-3 border-t border-rule space-y-1.5">
+                  {data.taxi.map((p) => (
+                    <Stash key={p.playerId} player={p} tag="Taxi" />
+                  ))}
+                  {data.reserve.map((p) => (
+                    <Stash key={p.playerId} player={p} tag="IR" />
                   ))}
                 </div>
-              </Panel>
-            </div>
-
-            {/* ---------------- right column ---------------- */}
-            <div className="space-y-4">
-              <Panel title="Game environment" meta="DraftKings via ESPN" accent>
-                <p className="px-4 pt-3 text-[11px] text-text-faint leading-relaxed">
-                  Context only — a 2025 backtest showed reweighting projections on these lines made start/sit calls
-                  <em className="not-italic text-fade"> worse</em>, so they no longer move the numbers above.
-                </p>
-                {data.movers.length === 0 ? (
-                  <p className="px-4 py-6 text-[12px] text-text-faint">No lines posted yet for this week.</p>
-                ) : (
-                  <ul>
-                    {data.movers.map((p, i) => (
-                      <li
-                        key={p.playerId}
-                        className="px-4 py-3 border-b border-rule/60 last:border-0 rise"
-                        style={{ animationDelay: `${200 + i * 30}ms` }}
-                      >
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <PositionTag position={p.position} />
-                          <span className="text-[13px]">{p.name}</span>
-                          <span className="num ml-auto text-[13px] text-text-dim">{p.points.toFixed(1)}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="num text-[10px] text-text-faint">
-                            {p.team} implied {p.impliedTeamPoints?.toFixed(1)}
-                          </span>
-                          <span className="num text-[10px]" style={{ color: (p.spread ?? 0) < 0 ? 'var(--color-signal-dim)' : 'var(--color-fade-dim)' }}>
-                            {(p.spread ?? 0) < 0 ? `−${Math.abs(p.spread!)}` : `+${p.spread}`}
-                          </span>
-                          <span className="num text-[10px] text-text-faint">vs {p.opponent}</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Panel>
-
-              <Panel title="Slot health" meta={`${data.slotMoves.length} action${data.slotMoves.length === 1 ? '' : 's'}`}>
-                {data.slotMoves.length === 0 ? (
-                  <div className="px-4 py-4 flex items-start gap-3">
-                    <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-signal shrink-0" />
-                    <p className="text-[12px] text-text-dim leading-relaxed">
-                      No wasted slots. Active roster full at{' '}
-                      <span className="num">{occupancy.playersActive}/{occupancy.totalActiveSlots}</span>, taxi{' '}
-                      <span className="num">{occupancy.playersOnTaxi}/{occupancy.taxiSlots}</span>, IR{' '}
-                      <span className="num">{occupancy.playersOnReserve}/{occupancy.reserveSlots}</span>.
-                    </p>
-                  </div>
-                ) : (
-                  <ul>
-                    {data.slotMoves.map((m, i) => (
-                      <li key={i} className="px-4 py-3 border-b border-rule/60 last:border-0">
-                        <div className="flex items-start gap-2.5">
-                          <span
-                            className="mt-1 w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{
-                              background:
-                                m.severity === 'critical'
-                                  ? 'var(--color-crit)'
-                                  : m.severity === 'warn'
-                                    ? 'var(--color-warn)'
-                                    : 'var(--color-text-faint)',
-                            }}
-                          />
-                          <div>
-                            <div className="text-[12.5px] mb-0.5">{m.title}</div>
-                            <div className="text-[11px] text-text-faint leading-relaxed">{m.detail}</div>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Panel>
-
-              {(data.taxi.length > 0 || data.reserve.length > 0) && (
-                <Panel title="Stashed" meta="taxi · IR">
-                  <div className="px-4 py-3 space-y-1.5">
-                    {data.taxi.map((p) => (
-                      <StashRow key={p.playerId} player={p} tag="TAXI" />
-                    ))}
-                    {data.reserve.map((p) => (
-                      <StashRow key={p.playerId} player={p} tag="IR" />
-                    ))}
-                  </div>
-                </Panel>
-              )}
-
-              {league.isDynasty && data.assets.length > 0 ? (
-                <Panel
-                  title="Dynasty assets"
-                  meta={<span className="num">{(data.totalAssetValue / 1000).toFixed(1)}k adj</span>}
-                >
-                  <ul>
-                    {data.assets.slice(0, 9).map((p) => (
-                      <li key={p.playerId} className="px-4 py-2 border-b border-rule/60 last:border-0 flex items-center gap-2.5">
-                        <PositionTag position={p.position} />
-                        <span className="text-[12.5px] truncate">{p.name}</span>
-                        {p.age ? <span className="num text-[10px] text-text-faint">{p.age}</span> : null}
-                        {p.ageMultiplier < 0.9 ? (
-                          <span className="num text-[9px] px-1 border border-fade/30 text-fade">
-                            −{Math.round((1 - p.ageMultiplier) * 100)}%
-                          </span>
-                        ) : null}
-                        <span className="num text-[11px] ml-auto">{p.adjustedValue?.toLocaleString()}</span>
-                        {p.trend30Day ? (
-                          <span
-                            className="num text-[10px] w-[46px] text-right"
-                            style={{ color: p.trend30Day > 0 ? 'var(--color-signal-dim)' : 'var(--color-fade-dim)' }}
-                          >
-                            {p.trend30Day > 0 ? '+' : ''}
-                            {p.trend30Day}
-                          </span>
-                        ) : (
-                          <span className="w-[46px]" />
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {data.ageCliff.length > 0 ? (
-                    <div className="px-4 py-3 border-t border-rule bg-fade/[0.03]">
-                      <div className="eyebrow mb-1.5 text-fade/80">Past the age cliff</div>
-                      <p className="text-[11px] text-text-dim leading-relaxed">
-                        {data.ageCliff.map((p) => `${p.name} (${p.age})`).join(', ')} —{' '}
-                        {posture?.posture === 'contend'
-                          ? 'keep, they are why you are contending.'
-                          : 'sell now, they decline fastest while you rebuild.'}
-                      </p>
-                    </div>
-                  ) : null}
-                </Panel>
               ) : null}
-            </div>
-          </div>
+            </Section>
+          </aside>
         </div>
-      )}
+      </div>
+
+      <SiteFooter />
     </main>
   );
 }
 
-function MetaBit({ label, value, tone }: { label: string; value: string; tone?: 'signal' }) {
+/* ------------------------------------------------------------------ */
+
+function MoveCard({ index, change, href, first }: { index: number; change: Change; href: string; first: boolean }) {
+  const out = change.outgoing;
+  const into = lastName(change.incoming.name);
   return (
-    <div className="text-right">
-      <div className="eyebrow mb-0.5">{label}</div>
-      <div className={`num text-[12px] ${tone === 'signal' ? 'text-signal' : 'text-text-dim'}`}>{value}</div>
-    </div>
+    <ActionCard
+      index={index}
+      emphasis={first}
+      title={out ? (out.startable ? `${into} over ${lastName(out.name)}.` : `${into} in. ${lastName(out.name)} out.`) : `Start ${into}.`}
+      detail={`${slotLabel(change.slot)} / ${
+        out ? (out.startable ? `projects ${change.incoming.points.toFixed(1)} vs ${out.points.toFixed(1)}` : statusLine(out)) : 'empty slot'
+      }`}
+      value={`+${change.gain.toFixed(1)}`}
+      action={
+        <a href={href} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+          Open in Sleeper →
+        </a>
+      }
+    />
   );
 }
 
-function StashRow({ player, tag }: { player: DashboardPlayer; tag: string }) {
+function MarketList({ assets }: { assets: DashboardPlayer[] }) {
+  const moving = assets
+    .filter((p) => p.trend30Day)
+    .sort((a, b) => Math.abs(b.trend30Day ?? 0) - Math.abs(a.trend30Day ?? 0))
+    .slice(0, 5);
+  const rows = moving.length > 0 ? moving : assets.slice(0, 5);
   return (
-    <div className="flex items-center gap-2 text-[12px]">
-      <span className="num text-[9px] px-1 py-0.5 border border-rule-bright text-text-faint">{tag}</span>
+    <ul>
+      {rows.map((p) => (
+        <li key={p.playerId} className="flex justify-between items-baseline gap-3 py-2 border-t border-rule">
+          <span className="min-w-0 truncate">
+            <span className="font-bold [font-stretch:112%] uppercase">{lastName(p.name)}</span>{' '}
+            <span className="font-mono text-[10px] text-text-faint">
+              {p.position}
+              {p.age ? `/${p.age}` : ''}
+            </span>
+          </span>
+          {p.trend30Day ? (
+            <Trend value={p.trend30Day} />
+          ) : (
+            <span className="num text-[12px] text-text-faint">{p.adjustedValue?.toLocaleString()}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Stash({ player, tag }: { player: DashboardPlayer; tag: string }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px] min-w-0">
+      <Tag tone="muted">{tag}</Tag>
       <PositionTag position={player.position} />
       <span className="truncate text-text-dim">{player.name}</span>
       <InjuryTag status={player.injuryStatus} playStatus={player.playStatus} />
@@ -441,125 +417,105 @@ function StashRow({ player, tag }: { player: DashboardPlayer; tag: string }) {
   );
 }
 
-function PostureCard({
-  posture,
-  strengths,
-}: {
-  posture: NonNullable<Awaited<ReturnType<typeof getDashboard>>>['posture'];
-  strengths: Array<{ rosterId: number; strength: number; isMine: boolean }>;
-}) {
-  if (!posture) return null;
-  const tone =
-    posture.posture === 'contend' ? 'signal' : posture.posture === 'rebuild' ? 'fade' : 'warn';
-  const color = `var(--color-${tone === 'warn' ? 'warn' : tone})`;
-  const max = Math.max(...strengths.map((s) => s.strength), 1);
-
+function NoLeagues() {
   return (
-    <div
-      className="rise bg-ink-card border border-rule p-4 sm:p-5 col-span-2 lg:col-span-1 flex flex-col sm:flex-row gap-4 sm:gap-6"
-      style={{ animationDelay: '180ms' }}
-    >
-      <div className="shrink-0 sm:max-w-[210px]">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="eyebrow">Posture</span>
-          <span
-            className="num text-[8.5px] px-1 py-0.5 border tracking-wider"
-            style={{
-              color: posture.confidence === 'low' ? 'var(--color-text-faint)' : 'var(--color-text-dim)',
-              borderColor: 'var(--color-rule-bright)',
-            }}
-            title="How much the season has told us so far"
-          >
-            {posture.confidence.toUpperCase()} CONF
-          </span>
-        </div>
-
-        <div className="font-display text-[2rem] leading-none tracking-tight" style={{ color }}>
-          {posture.posture}
-        </div>
-
-        <div className="flex items-center gap-2 mt-2">
-          <span
-            className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
-            style={{
-              color:
-                posture.trajectory === 'ascending'
-                  ? 'var(--color-signal)'
-                  : posture.trajectory === 'aging'
-                    ? 'var(--color-fade)'
-                    : 'var(--color-text-faint)',
-              borderColor: 'var(--color-rule-bright)',
-            }}
-          >
-            {posture.trajectory === 'ascending' ? '↗' : posture.trajectory === 'aging' ? '↘' : '→'}{' '}
-            {posture.trajectory.toUpperCase()}
-          </span>
-          <span className="num text-[10px] text-text-faint">
-            {posture.strengthZ >= 0 ? '+' : ''}
-            {posture.strengthZ.toFixed(2)}σ
-          </span>
-        </div>
-
-        <div className="mt-2 text-[11px] text-text-dim leading-snug">{posture.reasoning}</div>
+    <main className="min-h-dvh pb-tabbar">
+      <AppHeader active="/" leagues={[]} strip={['No leagues yet', 'Import yours in setup']} />
+      <div className="shell">
+        <EmptyState
+          kicker="[ Setup ] — Step 01"
+          title={
+            <>
+              No leagues.
+              <br />
+              <span className="outline-text">Yet.</span>
+            </>
+          }
+          action={
+            <Link href="/setup" className="btn btn-primary">
+              Import from Sleeper →
+            </Link>
+          }
+        >
+          Enter your Sleeper username and pick the leagues you want advice for. It takes about a minute.
+        </EmptyState>
       </div>
-
-      <div className="flex-1 min-w-0 flex flex-col justify-end">
-        <div className="eyebrow mb-2">League starting strength</div>
-        <div className="flex items-end gap-[3px] h-[64px]">
-          {strengths.map((s) => (
-            <div
-              key={s.rosterId}
-              className="flex-1 relative group"
-              style={{ height: `${(s.strength / max) * 100}%` }}
-              title={`Roster ${s.rosterId} — ${s.strength.toFixed(1)}`}
-            >
-              <div
-                className="w-full h-full transition-colors"
-                style={{
-                  background: s.isMine ? 'var(--color-signal)' : 'var(--color-rule-bright)',
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="mt-1.5 flex justify-between eyebrow text-text-faint">
-          <span>strongest</span>
-          <span className="text-signal">you · {ordinal(Math.round(posture.strengthPercentile * 100))} pct</span>
-          <span>weakest</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PreDraftNotice({ name }: { name: string }) {
-  return (
-    <div className="max-w-[1440px] mx-auto px-6 py-20 sm:py-24 text-center">
-      <div className="eyebrow mb-3">Nothing to analyze yet</div>
-      <h2 className="font-display text-3xl mb-3">{name} hasn&apos;t drafted</h2>
-      <p className="text-[13px] text-text-dim max-w-md mx-auto leading-relaxed">
-        This league is still in pre-draft, so there are no rosters to optimize. Lineup and waiver advice
-        will appear here the moment your draft completes.
-      </p>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <main className="min-h-dvh grid place-items-center px-6">
-      <div className="text-center max-w-md">
-        <div className="eyebrow mb-3">No leagues imported</div>
-        <h1 className="font-display text-4xl mb-4">
-          Football <em className="text-signal not-italic">Cheatsheet</em>
-        </h1>
-        <p className="text-[13px] text-text-dim leading-relaxed mb-6">
-          Run the importer to pull your Sleeper leagues, rosters and projections.
-        </p>
-        <code className="num text-[12px] px-3 py-2 border border-rule bg-ink-card inline-block text-signal">
-          npx tsx scripts/import.ts
-        </code>
-      </div>
+      <SiteFooter />
     </main>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/** Ruled-out starters first — they are the costly mistakes — then by gain. */
+function orderMoves(changes: Change[]): Change[] {
+  return [...changes].sort((a, b) => {
+    const aOut = a.outgoing && !a.outgoing.startable ? 1 : 0;
+    const bOut = b.outgoing && !b.outgoing.startable ? 1 : 0;
+    return bOut - aOut || b.gain - a.gain;
+  });
+}
+
+function headlineFor(top: Change | undefined, uncovered: DashboardPlayer | undefined) {
+  if (top?.outgoing) {
+    return { solid: ['Bench', `${lastName(top.outgoing.name)}.`], outline: ['Start', `${lastName(top.incoming.name)}.`] };
+  }
+  if (top) {
+    return { solid: ['Fill the', `${slotLabel(top.slot)}.`], outline: ['Start', `${lastName(top.incoming.name)}.`] };
+  }
+  if (uncovered) {
+    return { solid: ['Bench', `${lastName(uncovered.name)}.`], outline: ['Find a', 'backup.'] };
+  }
+  return { solid: ['Lineup', 'locked.'], outline: ['Go', 'win.'] };
+}
+
+function summaryFor(data: Dashboard, top: Change | undefined, uncovered: DashboardPlayer | undefined): string {
+  const total = Math.round(data.optimalPoints);
+  const count = data.changes.length;
+  const flagged = top?.outgoing && !top.outgoing.startable ? top.outgoing : uncovered;
+  if (flagged) {
+    const why = flagged.playStatus === 'bye' ? 'is on bye' : `is ruled out${flagged.injuryStatus ? ` (${flagged.injuryStatus.toLowerCase()})` : ''}`;
+    const rest =
+      count > 1
+        ? `Swap him, make ${count - 1} more change${count - 1 === 1 ? '' : 's'}, and you're a ${total}-point team.`
+        : count === 1
+          ? `Swap him and you're a ${total}-point team.`
+          : 'Nobody on your bench can cover the slot, so check the waiver wire.';
+    return `${flagged.name} ${why} and he's still in your lineup. ${rest}`;
+  }
+  if (count > 0) {
+    return `${count} swap${count === 1 ? ' adds' : 's add'} ${data.pointsLeftOnBench.toFixed(1)} projected points — taking you from ${data.currentPoints.toFixed(1)} to ${data.optimalPoints.toFixed(1)}.`;
+  }
+  return `Your starters are already the best lineup you can set. Projected ${data.optimalPoints.toFixed(1)}.`;
+}
+
+function statusLine(p: DashboardPlayer): string {
+  if (p.playStatus === 'bye') return `${lastName(p.name)} on bye`;
+  return `${lastName(p.name)} ruled out${p.injuryStatus ? ` — ${p.injuryStatus}` : ''}`;
+}
+
+function lineFor(p: DashboardPlayer | null): string {
+  if (!p || p.spread == null || !p.team) return '—';
+  const spread = p.spread === 0 ? 'PK' : `${p.spread < 0 ? '−' : '+'}${Math.abs(p.spread)}`;
+  return `${p.team} ${spread}`;
+}
+
+function slotLabel(slot: string): string {
+  if (slot === 'SUPER_FLEX') return 'SFLX';
+  if (slot === 'REC_FLEX') return 'RFLX';
+  if (slot === 'WRRB_FLEX') return 'W/R';
+  if (slot === 'IDP_FLEX') return 'IDP';
+  return slot.replace('_', ' ');
+}
+
+
+function initials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter((w) => /[a-z0-9]/i.test(w))
+      .slice(0, 3)
+      .map((w) => w.replace(/[^a-z0-9]/gi, '')[0]?.toUpperCase() ?? '')
+      .join('') || 'CS'
   );
 }

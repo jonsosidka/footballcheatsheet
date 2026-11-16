@@ -3,10 +3,12 @@ import { PageSkeleton } from '@/components/PageSkeleton';
 export default function Loading() {
   return (
     <PageSkeleton
-      eyebrow="Trade finder"
+      kicker="[ Trades ] — Loading"
       title={
         <>
-          Trade <em className="text-signal not-italic">Targets</em>
+          Buy low.
+          <br />
+          <span className="outline-text">Sell high.</span>
         </>
       }
       active="/trades"

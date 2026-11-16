@@ -3,10 +3,12 @@ import { PageSkeleton } from '@/components/PageSkeleton';
 export default function Loading() {
   return (
     <PageSkeleton
-      eyebrow="Draft room"
+      kicker="[ Draft ] — Loading"
       title={
         <>
-          Draft <em className="text-signal not-italic">/</em> Board
+          Draft
+          <br />
+          <span className="outline-text">room.</span>
         </>
       }
       active="/draft"

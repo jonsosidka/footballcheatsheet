@@ -15,10 +15,6 @@ import { NavProgress } from '@/components/NavProgress';
  *
  * The stepper covers the common move (last week, next week) in one tap; the
  * label opens a grid for jumping across the season.
- *
- * `variant` is passed in for the same reason as on the league switcher: the
- * header keeps separate phone and desktop rows, so the control must not also
- * decide for itself and end up in the document twice.
  */
 
 /** Weeks 1-18 of the NFL regular season. */
@@ -28,16 +24,12 @@ export function WeekPicker({
   week,
   liveWeek,
   leagueId,
-  variant,
 }: {
   week: number;
   /** Picking the live week clears the param rather than pinning it. */
   liveWeek?: number;
   leagueId?: string | null;
-  /** 'compact' is the thumb-sized phone control; 'full' the desktop one. */
-  variant: 'compact' | 'full';
 }) {
-  const compact = variant === 'compact';
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -62,8 +54,8 @@ export function WeekPicker({
 
   return (
     <>
-      <div className="chrome flex items-stretch border border-rule bg-ink-card shrink-0">
-        <Step direction="prev" compact={compact} disabled={week <= 1 || pending} onClick={() => go(week - 1)} />
+      <div className="chrome flex items-stretch border border-text bg-ink shrink-0">
+        <Step direction="prev" disabled={week <= 1 || pending} onClick={() => go(week - 1)} />
 
         <button
           type="button"
@@ -71,18 +63,15 @@ export function WeekPicker({
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label={`Week ${week}. Change week`}
-          className={`press px-3 border-x border-rule flex flex-col items-center justify-center ${
-            compact ? 'min-h-[44px]' : 'py-1.5'
-          }`}
+          className="press focus-ring px-3 min-h-[44px] md:min-h-0 border-x border-rule flex items-center justify-center"
         >
-          {compact ? null : <span className="eyebrow leading-none mb-0.5">Week</span>}
-          <span className="num text-[13px] leading-none text-text">
-            {compact ? <span className="text-text-faint">WK </span> : null}
+          <span className="font-mono text-[11px] tracking-[0.08em] leading-none text-text whitespace-nowrap">
+            <span className="text-text-faint">WK </span>
             {week}
           </span>
         </button>
 
-        <Step direction="next" compact={compact} disabled={week >= LAST_WEEK || pending} onClick={() => go(week + 1)} />
+        <Step direction="next" disabled={week >= LAST_WEEK || pending} onClick={() => go(week + 1)} />
       </div>
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Jump to week" subtitle="regular season">
@@ -95,8 +84,8 @@ export function WeekPicker({
                 type="button"
                 onClick={() => go(candidate)}
                 aria-current={isActive ? 'true' : undefined}
-                className={`press min-h-[56px] flex items-center justify-center num text-[15px] transition-colors ${
-                  isActive ? 'bg-signal/10 text-signal' : 'bg-ink-card text-text-dim active:bg-ink-hover'
+                className={`press min-h-[56px] flex items-center justify-center figure text-[20px] transition-colors ${
+                  isActive ? 'bg-accent text-on-accent' : 'bg-ink text-text active:bg-ink-hover hover:bg-ink-hover'
                 }`}
               >
                 {candidate}
@@ -107,7 +96,7 @@ export function WeekPicker({
               the hairline gap technique would show the rule colour through the
               hole. Fill it with cells that are simply not buttons. */}
           {Array.from({ length: (4 - (LAST_WEEK % 4)) % 4 }, (_, index) => (
-            <div key={`filler-${index}`} className="bg-ink-card sm:hidden" aria-hidden="true" />
+            <div key={`filler-${index}`} className="bg-ink sm:hidden" aria-hidden="true" />
           ))}
         </div>
       </Sheet>
@@ -119,12 +108,10 @@ export function WeekPicker({
 
 function Step({
   direction,
-  compact,
   disabled,
   onClick,
 }: {
   direction: 'prev' | 'next';
-  compact: boolean;
   disabled: boolean;
   onClick: () => void;
 }) {
@@ -134,8 +121,8 @@ function Step({
       onClick={onClick}
       disabled={disabled}
       aria-label={direction === 'prev' ? 'Previous week' : 'Next week'}
-      className={`press px-2.5 flex items-center justify-center text-text-dim active:bg-ink-hover
-        disabled:opacity-25 disabled:pointer-events-none ${compact ? 'min-h-[44px] min-w-[44px]' : ''}`}
+      className="press focus-ring px-2.5 flex items-center justify-center text-text min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-[36px]
+        hover:bg-ink-hover active:bg-ink-hover disabled:opacity-25 disabled:pointer-events-none"
     >
       <svg
         width="12"

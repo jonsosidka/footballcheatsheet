@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { Sheet } from '@/components/Sheet';
@@ -36,13 +35,10 @@ export function LeagueSwitcher({
   leagues,
   activeId,
   week,
-  variant,
 }: {
   leagues: SwitchableLeague[];
   activeId?: string | null;
   week?: number;
-  /** 'pills' shows every league inline; 'button' opens the sheet. */
-  variant: 'pills' | 'button';
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -71,28 +67,6 @@ export function LeagueSwitcher({
     startTransition(() => router.push(hrefFor(id)));
   };
 
-  if (variant === 'pills') {
-    return (
-      <div className="flex items-center gap-2 max-w-[46vw] overflow-x-auto no-scrollbar">
-        {leagues.map((league) => (
-          <Link
-            key={league.id}
-            href={hrefFor(league.id)}
-            aria-current={league.id === active.id ? 'true' : undefined}
-            className={`shrink-0 px-3 py-1.5 border text-[11px] transition-colors ${
-              league.id === active.id
-                ? 'border-signal/40 bg-signal/10 text-signal'
-                : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'
-            }`}
-          >
-            {league.name}
-            <span className="num ml-2 text-[9px] opacity-60">{league.isDynasty ? 'DYN' : 'RED'}</span>
-          </Link>
-        ))}
-      </div>
-    );
-  }
-
   return (
     <>
       {/* One control, 44pt tall, opening the sheet. */}
@@ -102,16 +76,12 @@ export function LeagueSwitcher({
         disabled={leagues.length === 1}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="chrome press flex items-center gap-2 min-h-[44px] min-w-0 flex-1
-          px-3 border border-rule bg-ink-card text-left disabled:opacity-100"
+        aria-label={`League: ${active.name}. Change league`}
+        className="chrome press focus-ring flex items-center gap-2.5 min-h-[44px] md:min-h-[2.625rem] min-w-0 flex-1 md:flex-none
+          md:max-w-[210px] px-3 border border-text bg-ink text-left text-text disabled:opacity-100"
       >
-        <span className="min-w-0 flex-1">
-          <span className="eyebrow block leading-none mb-1">League</span>
-          <span className="block text-[13px] truncate leading-none">{active.name}</span>
-        </span>
-        <span className="num text-[9px] px-1 py-0.5 border border-rule-bright text-text-faint shrink-0">
-          {active.isDynasty ? 'DYN' : 'RED'}
-        </span>
+        <span className="min-w-0 flex-1 font-mono text-[11px] tracking-[0.08em] uppercase truncate">{active.name}</span>
+        <span className="font-mono text-[10px] text-text-faint shrink-0">{active.isDynasty ? 'DYN' : 'RED'}</span>
         {leagues.length > 1 ? <Chevron /> : null}
       </button>
 
@@ -131,11 +101,11 @@ export function LeagueSwitcher({
                   onClick={() => select(league.id)}
                   aria-current={isActive ? 'true' : undefined}
                   className="press-row w-full min-h-[60px] px-4 py-3 flex items-center gap-3 text-left
-                    border-b border-rule/60 transition-colors"
+                    border-b border-rule transition-colors"
                 >
                   <span className="min-w-0 flex-1">
                     <span
-                      className={`block text-[14px] truncate ${isActive ? 'text-signal' : 'text-text'}`}
+                      className={`block wide uppercase text-[15px] truncate ${isActive ? 'text-signal' : 'text-text'}`}
                     >
                       {league.name}
                     </span>

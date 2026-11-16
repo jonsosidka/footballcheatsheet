@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition } from 'react';
 import { buildTradeAction } from '@/app/trades/actions';
 import type { BuilderTeam } from '@/lib/data/trades';
 import type { TradeOffer, TradePlayer, OfferVerdict, LetterGrade, TradeCallAction } from '@/lib/engine/trades';
-import { Panel, PositionTag } from '@/components/primitives';
+import { Panel, PositionTag, Tag } from '@/components/primitives';
 import { PlayerList, Delta } from '@/components/TradePieces';
 import { ClaudeTake } from '@/components/ClaudeTake';
 import { readStructured } from '@/lib/ai/readStructured';
@@ -167,15 +167,15 @@ export function TradeBuilder({
 
   return (
     <Panel
+      index={2}
       title="Build a trade"
-      accent
       meta={
-        <label className="flex items-center gap-2 normal-case tracking-normal shrink-0">
+        <label className="flex items-center gap-2 shrink-0">
           <span className="eyebrow">with</span>
           <select
             value={partner.rosterId}
             onChange={(e) => choosePartner(Number(e.target.value))}
-            className="bg-ink-raised border border-rule text-[12px] text-text px-2 py-1 min-h-[32px] max-w-[140px] sm:max-w-[200px] truncate"
+            className="field uppercase max-w-[170px] sm:max-w-[240px] truncate"
             aria-label="Trade partner"
           >
             {rivals.map((t) => (
@@ -208,7 +208,7 @@ export function TradeBuilder({
 
       {/* The ask, spelled out, with the controls. Sticky on phones so the
           buttons are reachable while scrolling a 30-man roster. */}
-      <div className="border-t border-rule px-4 py-3 bg-ink-card sticky bottom-[calc(3.25rem+env(safe-area-inset-bottom))] md:bottom-0 lg:static z-10">
+      <div className="border-t border-text px-4 py-3 bg-ink sticky bottom-[calc(3.25rem+env(safe-area-inset-bottom))] md:bottom-0 lg:static z-10">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mb-3">
           <Summary label="you want" players={wantPlayers} tone="signal" empty="nobody yet" />
           <Summary
@@ -225,15 +225,15 @@ export function TradeBuilder({
             type="button"
             onClick={() => run('suggest')}
             disabled={pending || wants.size === 0}
-            className="press min-h-[44px] md:min-h-0 px-3.5 py-2 border border-signal/50 bg-signal/10 text-signal text-[11.5px] tracking-wide disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn btn-primary press"
           >
-            {pending && result?.mode !== 'evaluate' ? 'Working…' : 'Suggest what to offer'}
+            {pending && result?.mode !== 'evaluate' ? 'Working…' : 'Suggest what to offer →'}
           </button>
           <button
             type="button"
             onClick={() => run('evaluate')}
             disabled={pending || wants.size === 0 || giveIds.length === 0}
-            className="press min-h-[44px] md:min-h-0 px-3.5 py-2 border border-rule text-text-dim text-[11.5px] tracking-wide hover:border-rule-bright hover:text-text disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn btn-outline press"
             title="Grade exactly this package, no substitutions"
           >
             Evaluate this exact deal
@@ -248,14 +248,14 @@ export function TradeBuilder({
                 setError(null);
                 resetClaude();
               }}
-              className="press min-h-[44px] md:min-h-0 px-2 text-[11px] text-text-faint hover:text-text-dim ml-auto"
+              className="btn btn-ghost press ml-auto"
             >
-              clear
+              Clear
             </button>
           )}
         </div>
         {error ? (
-          <p className="num text-[10.5px] text-fade mt-2" role="status">
+          <p className="num text-[12px] text-fade mt-2" role="status">
             {error}
           </p>
         ) : null}
@@ -304,8 +304,8 @@ function RosterColumn({
               type="button"
               onClick={() => onFilter(f)}
               aria-pressed={filter === f}
-              className={`num text-[9px] px-1.5 py-1 min-h-[28px] border tracking-wider transition-colors ${
-                filter === f ? 'border-signal/40 text-signal' : 'border-rule text-text-faint hover:text-text-dim'
+              className={`font-mono text-[10px] font-bold px-2 py-1 min-h-[30px] border tracking-[0.08em] transition-colors ${
+                filter === f ? 'bg-text text-ink border-text' : 'border-rule text-text-faint hover:text-text hover:border-text'
               }`}
             >
               {f}
@@ -314,7 +314,7 @@ function RosterColumn({
         </div>
       </div>
 
-      <ul className="max-h-[360px] lg:max-h-[440px] overflow-y-auto border-t border-rule/60">
+      <ul className="max-h-[360px] lg:max-h-[440px] overflow-y-auto border-t border-rule">
         {shown.map((p) => {
           const mark = markOf(p.playerId);
           return (
@@ -323,13 +323,13 @@ function RosterColumn({
                 type="button"
                 onClick={() => onTap(p.playerId)}
                 aria-pressed={mark !== null}
-                className={`press-row w-full min-h-[44px] px-4 py-2 flex items-center gap-2.5 text-left border-b border-rule/40 transition-colors ${
-                  mark === 'want' || mark === 'send' ? 'bg-signal/5' : mark === 'keep' ? 'bg-fade/5' : ''
+                className={`press-row w-full min-h-[44px] px-4 py-2 flex items-center gap-2.5 text-left border-b border-rule transition-colors hover:bg-ink-hover ${
+                  mark === 'want' || mark === 'send' ? 'bg-accent/15' : mark === 'keep' ? 'bg-fade/10' : ''
                 }`}
               >
                 <PositionTag position={p.position} />
                 <span
-                  className={`text-[12.5px] truncate min-w-0 flex-1 ${
+                  className={`text-[14px] truncate min-w-0 flex-1 ${
                     mark === 'want' || mark === 'send' ? 'text-signal' : mark === 'keep' ? 'text-fade' : 'text-text'
                   }`}
                 >
@@ -344,20 +344,21 @@ function RosterColumn({
                 <span className="num text-[10px] text-text-dim w-[40px] text-right">
                   {p.dynastyValue > 0 ? p.dynastyValue.toLocaleString() : '—'}
                 </span>
-                <span
-                  className={`num text-[9px] w-[38px] text-right tracking-wider ${
-                    mark === 'keep' ? 'text-fade' : mark ? 'text-signal' : 'text-transparent'
-                  }`}
-                  aria-hidden={mark === null}
-                >
-                  {mark === 'want' ? 'WANT' : mark === 'send' ? 'SEND' : mark === 'keep' ? 'KEEP' : '·'}
+                <span className="w-[42px] flex justify-end" aria-hidden={mark === null}>
+                  {mark === 'want' ? (
+                    <Tag tone="accent">Want</Tag>
+                  ) : mark === 'send' ? (
+                    <Tag tone="accent">Send</Tag>
+                  ) : mark === 'keep' ? (
+                    <Tag tone="fade">Keep</Tag>
+                  ) : null}
                 </span>
               </button>
             </li>
           );
         })}
         {shown.length === 0 ? (
-          <li className="px-4 py-6 text-[12px] text-text-faint">
+          <li className="px-4 py-6 text-[14px] text-text-faint">
             {filter === 'PICK' ? 'No draft picks owned.' : 'Nobody at that position.'}
           </li>
         ) : null}
@@ -386,7 +387,7 @@ function Summary({
           {label}
           {trailing ? <span className="ml-2 text-fade">{trailing}</span> : null}
         </div>
-        <span className="text-[12px] text-text-faint">{empty}</span>
+        <span className="text-[14px] text-text-faint">{empty}</span>
       </div>
     );
   }
@@ -397,10 +398,10 @@ function Summary({
   );
 }
 
-const VERDICT_STYLE: Record<OfferVerdict, { label: string; color: string }> = {
-  accept: { label: 'LIKELY ACCEPTED', color: 'var(--color-signal)' },
-  'coin-flip': { label: 'COIN FLIP', color: 'var(--color-warn)' },
-  decline: { label: 'LIKELY DECLINED', color: 'var(--color-fade)' },
+const VERDICT_STYLE: Record<OfferVerdict, { label: string; tone: 'accent' | 'warn' | 'fade' }> = {
+  accept: { label: 'Likely accepted', tone: 'accent' },
+  'coin-flip': { label: 'Coin flip', tone: 'warn' },
+  decline: { label: 'Likely declined', tone: 'fade' },
 };
 
 const CALL_COLOR: Record<TradeCallAction, string> = {
@@ -420,11 +421,11 @@ function GradeChip({ label, grade }: { label: string; grade: LetterGrade }) {
   const color = gradeColor(grade);
   return (
     <div
-      className="flex flex-col items-center justify-center min-w-14 max-w-32 px-2 py-1 border"
+      className="flex flex-col items-center justify-center min-w-14 max-w-32 px-2 py-1.5 border"
       style={{ borderColor: color }}
       title={`${label}: ${grade}, judged on ${label === 'you' ? 'your' : 'their'} own objective`}
     >
-      <span className="num text-[20px] leading-none font-semibold" style={{ color }}>
+      <span className="figure text-[26px] leading-none" style={{ color }}>
         {grade}
       </span>
       <span className="eyebrow text-[8px] text-text-faint mt-1 max-w-full truncate">{label}</span>
@@ -462,7 +463,7 @@ function Offers({
       </div>
 
       {offers.length === 0 ? (
-        <p className="px-4 py-6 text-[12px] text-text-faint leading-relaxed">
+        <p className="px-4 py-6 text-[14px] text-text-faint leading-relaxed">
           Nothing on your roster gets there without wildly overpaying. Either the ask is too big for your assets, or
           the players you kept are the ones {partnerName} would want — try unlocking one.
         </p>
@@ -477,18 +478,12 @@ function Offers({
                 style={{ animationDelay: `${i * 30}ms` }}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="num text-[10px] text-text-faint">{String(i + 1).padStart(2, '0')}</span>
-                  <span
-                    className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
-                    style={{ color: verdict.color, borderColor: 'var(--color-rule-bright)' }}
-                  >
-                    {verdict.label}
-                  </span>
-                  <span
-                    className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-text-faint ml-auto"
-                    title="Market value you send ÷ market value you get"
-                  >
-                    {offer.valueRatio.toFixed(2)}× value
+                  <span className="figure text-[22px] leading-none text-signal">{String(i + 1).padStart(2, '0')}</span>
+                  <Tag tone={verdict.tone}>{verdict.label}</Tag>
+                  <span className="ml-auto">
+                    <Tag tone="muted" title="Market value you send ÷ market value you get">
+                      {offer.valueRatio.toFixed(2)}× value
+                    </Tag>
                   </span>
                 </div>
 
@@ -498,7 +493,7 @@ function Offers({
                     <GradeChip label={partnerName} grade={offer.grades.theirs} />
                   </div>
                   <p
-                    className="text-[13px] font-medium leading-snug min-w-0 flex-1 basis-60"
+                    className="text-[15px] font-semibold leading-snug min-w-0 flex-1 basis-60"
                     style={{ color: CALL_COLOR[offer.call.action] }}
                   >
                     {offer.call.headline}
@@ -516,7 +511,7 @@ function Offers({
                   <PlayerList label="you get" players={offer.mine.gets} tone="signal" />
                 </div>
 
-                <p className="text-[11.5px] text-text-faint leading-relaxed mb-2">{offer.rationale}</p>
+                <p className="text-[13px] text-text-faint leading-relaxed mb-2">{offer.rationale}</p>
 
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   <Delta label="you" now={offer.mine.winNowDelta} future={offer.mine.futureDelta} isDynasty={isDynasty} />
@@ -550,45 +545,36 @@ function ClaudePackages({
 
   return (
     <div className="border-b border-rule">
-      <div className="px-4 py-2.5 flex items-baseline justify-between gap-4 border-b border-rule bg-signal/5">
-        <span className="eyebrow text-signal">claude&apos;s offers</span>
+      <div className="px-4 py-2.5 flex items-baseline justify-between gap-4 border-b border-rule">
+        <span className="kicker">Claude&apos;s offers</span>
         <span className="eyebrow text-text-faint">
           {claude.status === 'loading' ? 'reading both rosters…' : claude.status === 'done' ? 'graded by the engine' : ''}
         </span>
       </div>
 
       {claude.status === 'loading' ? (
-        <p className="px-4 py-4 text-[11.5px] text-text-faint" aria-live="polite">
-          Claude is building offers from your surplus and {partnerName}&apos;s needs. The engine&apos;s packages are below
-          in the meantime.
+        <p className="px-4 py-4 text-[14px] text-text-faint" aria-live="polite">
+          Claude is building offers from your surplus and {partnerName}&apos;s needs. The engine&apos;s packages are
+          below in the meantime.
         </p>
       ) : null}
 
       {claude.status === 'error' ? (
-        <p className="num px-4 py-3 text-[10.5px] text-fade" role="status">
+        <p className="num px-4 py-3 text-[12px] text-fade" role="status">
           {claude.message}
         </p>
       ) : null}
 
       {claude.status === 'done' ? (
         <>
-          {/* Decided here, not by the model: Claude will negotiate for anything
-              it is asked about, so the engine's verdict gets the first word. */}
-          {claude.result.packages.length > 0 && claude.result.packages.every((p) => p.offer.call.action === 'pass') ? (
-            <p className="mx-4 mt-3 px-3 py-2 border border-fade/40 bg-fade/5 text-[11.5px] text-fade leading-relaxed">
-              Heads up: the engine grades every one of these a pass for you. Getting{' '}
-              {claude.result.packages[0].offer.mine.gets.map((p) => p.name).join(' and ')} barely moves your team, so only
-              send one if you want them for a reason the numbers don&apos;t capture.
-            </p>
-          ) : null}
           {claude.result.summary ? (
-            <p className="px-4 pt-3 text-[12px] text-text-dim leading-relaxed">{claude.result.summary}</p>
+            <p className="px-4 pt-3 text-[15px] text-text-dim leading-relaxed">{claude.result.summary}</p>
           ) : null}
           <ul>
             {claude.result.packages.map((pkg, i) => (
               <li key={i} className="px-4 py-3.5 border-b border-rule/60 last:border-0 rise" style={{ animationDelay: `${i * 40}ms` }}>
-                <p className="text-[13px] text-text font-medium leading-snug mb-1">{pkg.headline}</p>
-                <p className="text-[11.5px] text-text-dim leading-relaxed mb-3">{pkg.why}</p>
+                <p className="wide uppercase text-[17px] leading-snug mb-1">{pkg.headline}</p>
+                <p className="text-[14px] text-text-dim leading-relaxed mb-3">{pkg.why}</p>
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
                   <div className="flex items-center gap-2">
@@ -596,7 +582,7 @@ function ClaudePackages({
                     <GradeChip label={partnerName} grade={pkg.offer.grades.theirs} />
                   </div>
                   <p
-                    className="text-[12px] font-medium leading-snug min-w-0 flex-1 basis-60"
+                    className="text-[15px] font-semibold leading-snug min-w-0 flex-1 basis-60"
                     style={{ color: CALL_COLOR[pkg.offer.call.action] }}
                   >
                     {pkg.offer.call.headline}
@@ -621,10 +607,10 @@ function ClaudePackages({
             ))}
           </ul>
           {claude.result.packages.length === 0 ? (
-            <p className="px-4 py-3 text-[11.5px] text-text-faint">None of Claude&apos;s offers passed the roster check.</p>
+            <p className="px-4 py-3 text-[14px] text-text-faint">None of Claude&apos;s offers checked out against the live rosters.</p>
           ) : null}
           {claude.result.rejected.length > 0 ? (
-            <p className="px-4 py-2 text-[10.5px] text-text-faint border-t border-rule/60">
+            <p className="px-4 py-2 text-[12px] text-text-faint border-t border-rule">
               Dropped {claude.result.rejected.length} that didn&apos;t check out:{' '}
               {claude.result.rejected.map((r) => `${r.headline} (${r.reason})`).join('; ')}
             </p>

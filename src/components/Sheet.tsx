@@ -183,8 +183,8 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         className={`chrome relative w-full sm:w-[420px] sm:mx-4 max-h-[85dvh] flex flex-col
-          bg-ink-raised border-t border-rule-bright sm:border outline-none
-          rounded-t-[14px] sm:rounded-[14px] shadow-[0_-8px_40px_rgba(0,0,0,0.55)]
+          bg-ink border-t border-text sm:border outline-none
+          shadow-[0_-8px_40px_rgba(0,0,0,0.45)]
           ${closing ? 'sheet-out' : 'sheet-in'}`}
       >
         {/* Grab area: the handle and the title are both draggable, which is
@@ -196,9 +196,9 @@ export function Sheet({
           onPointerCancel={endDrag}
           className="shrink-0 pt-2.5 px-4 pb-3 border-b border-rule touch-none"
         >
-          <div className="sm:hidden mx-auto mb-3 h-1 w-9 rounded-full bg-rule-bright" aria-hidden="true" />
+          <div className="sm:hidden mx-auto mb-3 h-1 w-9 bg-rule-bright" aria-hidden="true" />
           <div className="flex items-baseline justify-between gap-4">
-            <h2 className="eyebrow">{title}</h2>
+            <h2 className="kicker">{title}</h2>
             {subtitle ? <span className="eyebrow text-text-faint">{subtitle}</span> : null}
           </div>
         </div>
@@ -211,7 +211,7 @@ export function Sheet({
           <button
             type="button"
             onClick={onClose}
-            className="press w-full h-[52px] text-[13px] text-text-dim active:bg-ink-hover"
+            className="press w-full h-[52px] font-mono text-[11px] font-bold tracking-[0.14em] uppercase text-text-dim active:bg-ink-hover"
           >
             Close
           </button>

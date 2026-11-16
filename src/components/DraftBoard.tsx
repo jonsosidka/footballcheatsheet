@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Panel, PositionTag, InjuryTag } from '@/components/primitives';
+import { Panel, PositionTag, InjuryTag, Tag, PageHero, ChromeFigure, SpecGrid, HowItWorks } from '@/components/primitives';
 import type { DraftView } from '@/lib/data/draft';
 
 /**
@@ -17,7 +17,7 @@ import type { DraftView } from '@/lib/data/draft';
 const LIVE_INTERVAL_MS = 5_000;
 const IDLE_INTERVAL_MS = 20_000;
 
-export function DraftBoard({ initial, query }: { initial: DraftView; query: string }) {
+export function DraftBoard({ initial, query, kicker }: { initial: DraftView; query: string; kicker: string }) {
   const [view, setView] = useState(initial);
   const [live, setLive] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,79 +53,89 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
   const complete = view.status === 'complete';
 
   return (
-    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 sm:py-5">
-      {/* --- clock ---------------------------------------------------------- */}
-      <div
-        key={pulse}
-        className="rise flex flex-wrap items-end gap-x-6 sm:gap-x-10 gap-y-4 mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-rule"
-      >
-        <div>
-          <div className="eyebrow mb-1">{complete ? 'Draft complete' : 'On the clock'}</div>
-          <div className="flex items-baseline gap-3">
-            <span className="num text-[2rem] leading-none text-signal">{view.currentLabel}</span>
-            <span className="text-[13px] text-text-dim">
-              {complete ? `${view.totalPicks} picks made` : (view.onTheClockTeam ?? '—')}
-            </span>
-          </div>
-        </div>
-
-        <div className="h-9 w-px bg-rule hidden md:block" />
-
-        <div>
-          <div className="eyebrow mb-1">Your pick</div>
-          <div className="flex items-baseline gap-2">
-            <span
-              className="num text-[1.35rem] leading-none"
-              style={{ color: view.isMyPick ? 'var(--color-signal)' : 'var(--color-text)' }}
-            >
-              {view.myNextLabel ?? '—'}
-            </span>
-            <span className="text-[11px] text-text-faint">
-              {view.isMyPick
-                ? "you're up"
+    <div className="shell">
+      <div key={pulse} className="rise">
+        <PageHero
+          kicker={kicker}
+          title={
+            complete ? (
+              <>
+                Draft
+                <br />
+                <span className="outline-text">done.</span>
+              </>
+            ) : view.isMyPick ? (
+              <>
+                You&apos;re
+                <br />
+                <span className="outline-text">up.</span>
+              </>
+            ) : (
+              <>
+                On the
+                <br />
+                <span className="outline-text">clock.</span>
+              </>
+            )
+          }
+          aside={
+            <>
+              <ChromeFigure label={complete ? 'Picks made' : 'Pick'} value={complete ? String(view.totalPicks) : view.currentLabel}>
+                {complete ? 'FINAL ROSTER BELOW' : (view.onTheClockTeam ?? '—').toUpperCase()}
+              </ChromeFigure>
+              <SpecGrid
+                items={[
+                  { label: 'Your pick', value: view.myNextLabel ?? '—' },
+                  { label: 'Seat', value: view.mySlot ? `${view.mySlot} / ${view.teams}` : '—' },
+                  { label: 'Starters', value: view.starterPoints.toFixed(0) },
+                ]}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => (live ? setLive(false) : (setLive(true), refresh()))}
+                  disabled={complete}
+                  className="btn btn-outline press"
+                >
+                  <span
+                    className={`w-2 h-2 ${live && !complete ? 'pulse' : ''}`}
+                    style={{
+                      background: complete
+                        ? 'var(--color-text-faint)'
+                        : live
+                          ? 'var(--color-signal)'
+                          : 'var(--color-warn)',
+                    }}
+                  />
+                  {complete ? 'Finished' : live ? 'Live' : 'Paused'}
+                </button>
+                <span className="font-mono text-[11px] text-text-faint uppercase tracking-[0.06em]">
+                  Room vs ADP {view.drift === 0 ? 'on pace' : `${view.drift > 0 ? '+' : ''}${view.drift.toFixed(1)}`}
+                </span>
+                {error ? <span className="num text-[11px] text-fade basis-full">{error}</span> : null}
+              </div>
+            </>
+          }
+        >
+          <p>
+            {complete
+              ? `All ${view.totalPicks} picks are in. Your final roster projects ${view.starterPoints.toFixed(0)} points from its starters.`
+              : view.isMyPick
+                ? 'You are on the clock. The best pick for your whole roster is at the top of the list below.'
                 : view.picksUntilMyTurn === null
-                  ? 'no picks left'
-                  : `in ${view.picksUntilMyTurn} pick${view.picksUntilMyTurn === 1 ? '' : 's'}`}
-            </span>
-          </div>
-        </div>
-
-        <Bit label="Seat" value={view.mySlot ? `#${view.mySlot} of ${view.teams}` : '—'} />
-        <Bit label="Projected starters" value={view.starterPoints.toFixed(0)} tone="signal" />
-        <Bit label="Depth value" value={`+${view.depthPoints.toFixed(0)}`} />
-        <Bit
-          label="Room vs ADP"
-          value={view.drift === 0 ? 'on pace' : `${view.drift > 0 ? '+' : ''}${view.drift.toFixed(1)}`}
-        />
-
-        <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-3">
-          {error ? <span className="num text-[10px] text-fade max-w-[200px]">{error}</span> : null}
-          <button
-            type="button"
-            onClick={() => (live ? setLive(false) : (setLive(true), refresh()))}
-            disabled={complete}
-            className="press flex items-center gap-2 px-2.5 py-1.5 min-h-[44px] sm:min-h-0 border border-rule text-[11px] text-text-dim transition-colors hover:border-signal/40 hover:text-signal disabled:opacity-40"
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${live && !complete ? 'pulse' : ''}`}
-              style={{
-                background: complete
-                  ? 'var(--color-text-faint)'
-                  : live
-                    ? 'var(--color-signal)'
-                    : 'var(--color-warn)',
-              }}
-            />
-            {complete ? 'Finished' : live ? 'Live' : 'Paused'}
-          </button>
-        </div>
+                  ? 'You have no picks left in this draft.'
+                  : `Your next pick is in ${view.picksUntilMyTurn} pick${view.picksUntilMyTurn === 1 ? '' : 's'}. Here is who to plan for, and the odds each one is still there.`}
+          </p>
+        </PageHero>
       </div>
 
+      <div className="py-6">
       {view.warnings.length > 0 ? (
-        <div className="mb-4 border border-warn/30 bg-warn/5 px-4 py-2.5 space-y-1">
+        <div className="mb-4 border border-text px-4 py-3 space-y-1.5">
           {view.warnings.map((warning) => (
-            <p key={warning} className="text-[11.5px] text-warn leading-relaxed">
-              {warning}
+            <p key={warning} className="text-[14px] text-text-dim leading-relaxed flex gap-2.5 items-baseline">
+              <Tag tone="solid">Setup</Tag>
+              <span>{warning}</span>
             </p>
           ))}
         </div>
@@ -135,12 +145,13 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
         {/* --- the recommendation ------------------------------------------ */}
         <div className="space-y-3 sm:space-y-4">
           <Panel
-            title={view.isMyPick ? 'Take him' : `Plan for ${view.myNextLabel ?? 'your next pick'}`}
+            index={1}
+            title={complete ? 'Draft complete' : view.isMyPick ? 'Take him' : `Plan for ${view.myNextLabel ?? 'your next pick'}`}
             accent
             meta={`${view.poolSize.toLocaleString()} on the board`}
           >
             {view.suggestions.length === 0 ? (
-              <p className="px-4 py-8 text-[12px] text-text-faint">
+              <p className="px-4 py-8 text-[14px] text-text-faint">
                 {complete
                   ? 'Draft is over. The roster panel is your final team.'
                   : 'No suggestions — the board could not work out which seat is yours.'}
@@ -150,10 +161,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                 {view.suggestions.map((suggestion, index) => (
                   <li
                     key={suggestion.player.playerId}
-                    className="px-4 py-3.5 border-b border-rule/60 last:border-0"
-                    style={{
-                      background: index === 0 ? 'rgba(201,242,77,0.04)' : undefined,
-                    }}
+                    className={`px-4 py-3.5 border-b border-rule last:border-0 ${index === 0 ? 'bg-accent/10' : ''}`}
                   >
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-2 sm:gap-3">
                       <span className="num text-[10px] text-text-faint w-5 pt-1 shrink-0 hidden sm:block">
@@ -166,7 +174,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                             {String(index + 1).padStart(2, '0')}
                           </span>
                           <PositionTag position={suggestion.player.position} />
-                          <span className={index === 0 ? 'text-[14.5px]' : 'text-[13.5px]'}>
+                          <span className={`wide uppercase ${index === 0 ? 'text-[18px]' : 'text-[16px]'}`}>
                             {suggestion.player.name}
                           </span>
                           <span className="num text-[10px] text-text-faint">
@@ -174,17 +182,17 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                             {suggestion.player.byeWeek ? ` · bye ${suggestion.player.byeWeek}` : ''}
                           </span>
                           <InjuryTag status={suggestion.player.injuryStatus} />
-                          {suggestion.mandatory ? <Chip label="FORCED" tone="crit" /> : null}
-                          {suggestion.run ? <Chip label="RUN" tone="warn" /> : null}
-                          {suggestion.fillsSlot ? <Chip label={suggestion.fillsSlot} tone="signal" /> : null}
+                          {suggestion.mandatory ? <Tag tone="crit">Must fill</Tag> : null}
+                          {suggestion.run ? <Tag tone="warn">Run on</Tag> : null}
+                          {suggestion.fillsSlot ? <Tag tone="accent">{suggestion.fillsSlot}</Tag> : null}
                           {!suggestion.likelyAvailable && !view.isMyPick ? (
-                            <Chip label={`${Math.round(suggestion.survival * 100)}% THERE`} tone="fade" />
+                            <Tag tone="fade">{`${Math.round(suggestion.survival * 100)}% still there`}</Tag>
                           ) : null}
                         </div>
 
-                        <p className="text-[11.5px] text-text-faint leading-relaxed">{suggestion.rationale}</p>
+                        <p className="text-[13px] text-text-faint leading-relaxed">{suggestion.rationale}</p>
 
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 num text-[10px] text-text-faint">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 num text-[11px] uppercase text-text-faint">
                           <span>
                             proj <span className="text-text-dim">{suggestion.player.points.toFixed(0)}</span>
                           </span>
@@ -222,7 +230,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                       </div>
 
                       <div className="shrink-0 w-full sm:w-[112px] flex sm:block items-baseline gap-2 text-right pt-1 sm:pt-0 border-t border-rule/60 sm:border-0">
-                        <div className="num text-[1.5rem] leading-none text-signal">
+                        <div className="figure text-[1.75rem] leading-none text-signal">
                           {suggestion.marginal.toFixed(0)}
                         </div>
                         <div className="eyebrow sm:mt-1">pts added</div>
@@ -245,10 +253,10 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
           </Panel>
 
           {/* --- cheat sheet ------------------------------------------------ */}
-          <Panel title="Best available" meta="by position">
+          <Panel index={2} title="Best available" meta="by position">
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-px bg-rule">
               {view.board.map((column) => (
-                <div key={column.position} className="bg-ink-card p-3">
+                <div key={column.position} className="bg-ink p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <PositionTag position={column.position} />
                     <span className="eyebrow">
@@ -257,7 +265,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                   </div>
                   <ul className="space-y-1">
                     {column.players.map((entry, index) => (
-                      <li key={entry.playerId} className="flex items-baseline gap-1.5 text-[11.5px]">
+                      <li key={entry.playerId} className="flex items-baseline gap-1.5 text-[13px]">
                         <span className="num text-[9px] text-text-faint w-3">{index + 1}</span>
                         <span className="truncate text-text-dim flex-1">{entry.name}</span>
                         {index > 0 && column.players[index - 1].tier !== entry.tier ? (
@@ -276,6 +284,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
         {/* --- your team --------------------------------------------------- */}
         <div className="space-y-4">
           <Panel
+            index={3}
             title="Your roster"
             meta={`${view.starterPoints.toFixed(0)} starters · ${view.rosterTotal.toFixed(0)} total`}
           >
@@ -289,7 +298,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                   {slot.playerId ? (
                     <>
                       <PositionTag position={slot.position ?? '?'} />
-                      <span className="text-[12.5px] truncate">{slot.name}</span>
+                      <span className="text-[14px] truncate">{slot.name}</span>
                       <span className="num text-[9.5px] text-text-faint">
                         {slot.team}
                         {slot.byeWeek ? ` · ${slot.byeWeek}` : ''}
@@ -299,7 +308,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                       </span>
                     </>
                   ) : (
-                    <span className="text-[12px] text-text-faint italic">empty</span>
+                    <span className="font-mono text-[11px] text-text-faint">EMPTY</span>
                   )}
                 </li>
               ))}
@@ -310,7 +319,7 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                 <div className="eyebrow mb-1.5">Bench</div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1">
                   {view.bench.map((entry) => (
-                    <span key={entry.playerId} className="text-[11.5px] text-text-faint">
+                    <span key={entry.playerId} className="text-[13px] text-text-faint">
                       {entry.name}
                       <span className="num text-[9.5px]"> {entry.position}</span>
                     </span>
@@ -320,45 +329,43 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
             ) : null}
 
             {view.byeShortWeeks.length > 0 ? (
-              <div className="px-4 py-2 border-t border-rule text-[11px] text-warn">
+              <div className="px-4 py-2.5 border-t border-rule text-[13px] text-warn">
                 Short a starter on week {view.byeShortWeeks.join(', ')} byes.
               </div>
             ) : null}
           </Panel>
 
           {view.runs.length > 0 ? (
-            <Panel title="Runs in progress" accent>
+            <Panel title="Runs in progress">
               <ul className="py-1">
                 {view.runs.map((run) => (
                   <li key={run.position} className="px-4 py-2 flex items-center gap-2.5">
                     <PositionTag position={run.position} />
-                    <span className="text-[11.5px] text-text-dim">
+                    <span className="text-[13px] text-text-dim">
                       {run.picks} of the last {run.window} picks
                     </span>
-                    <span className="num text-[10px] ml-auto text-warn">HOT</span>
+                    <span className="ml-auto"><Tag tone="warn">Hot</Tag></span>
                   </li>
                 ))}
               </ul>
             </Panel>
           ) : null}
 
-          <Panel title="Draft standings" meta="projected starters">
+          <Panel index={4} title="Draft standings" meta="projected starters">
             <ul>
               {view.standings.map((team, index) => (
                 <li
                   key={team.slot}
-                  className="px-4 py-2 border-b border-rule/60 last:border-0 flex items-center gap-2.5"
-                  style={{ background: team.isMe ? 'rgba(201,242,77,0.05)' : undefined }}
+                  className={`px-4 py-2 border-b border-rule last:border-0 flex items-center gap-2.5 ${
+                    team.isMe ? 'bg-accent text-on-accent' : ''
+                  }`}
                 >
-                  <span className="num text-[10px] text-text-faint w-4">{index + 1}</span>
-                  <span
-                    className="text-[12px] truncate flex-1"
-                    style={{ color: team.isMe ? 'var(--color-signal)' : undefined }}
-                  >
+                  <span className="figure text-[18px] w-[26px] leading-none">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="truncate flex-1 font-bold [font-stretch:112%] uppercase text-[13px]">
                     {team.name}
                   </span>
-                  <span className="num text-[9.5px] text-text-faint">{team.picks}p</span>
-                  <span className="num text-[11px] w-[46px] text-right text-text-dim">
+                  <span className="num text-[10px] opacity-70">{team.picks}P</span>
+                  <span className="num text-[12px] w-[46px] text-right">
                     {team.starterPoints.toFixed(0)}
                   </span>
                 </li>
@@ -366,13 +373,14 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
             </ul>
           </Panel>
 
-          <Panel title="Recent picks" meta={`${view.currentPickNo - 1} made`}>
+          <Panel index={5} title="Recent picks" meta={`${view.currentPickNo - 1} made`}>
             <ul>
               {view.recentPicks.map((pick) => (
                 <li
                   key={pick.pickNo}
-                  className="px-4 py-1.5 border-b border-rule/60 last:border-0 flex items-center gap-2 text-[11.5px]"
-                  style={{ background: pick.isMine ? 'rgba(201,242,77,0.05)' : undefined }}
+                  className={`px-4 py-1.5 border-b border-rule last:border-0 flex items-center gap-2 text-[13px] ${
+                    pick.isMine ? 'bg-accent/15' : ''
+                  }`}
                 >
                   <span className="num text-[9.5px] text-text-faint w-8">{pick.label}</span>
                   <PositionTag position={pick.position} />
@@ -395,8 +403,8 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
             </ul>
           </Panel>
 
-          <Panel title="How this is ranked">
-            <div className="px-4 py-3.5 space-y-2.5 text-[11.5px] text-text-faint leading-relaxed">
+          <HowItWorks>
+            <div className="space-y-2.5">
               <p>
                 A pick is scored by what it adds to your{' '}
                 <em className="text-text-dim not-italic">whole roster</em> — the optimal starting lineup,
@@ -415,36 +423,10 @@ export function DraftBoard({ initial, query }: { initial: DraftView; query: stri
                 .
               </p>
             </div>
-          </Panel>
+          </HowItWorks>
         </div>
       </div>
+      </div>
     </div>
-  );
-}
-
-function Bit({ label, value, tone }: { label: string; value: string; tone?: 'signal' }) {
-  return (
-    <div>
-      <div className="eyebrow mb-1">{label}</div>
-      <div className={`num text-[13px] ${tone === 'signal' ? 'text-signal' : 'text-text'}`}>{value}</div>
-    </div>
-  );
-}
-
-function Chip({ label, tone }: { label: string; tone: 'signal' | 'warn' | 'crit' | 'fade' }) {
-  const color = {
-    signal: ['var(--color-signal)', 'rgba(201,242,77,0.3)'],
-    warn: ['var(--color-warn)', 'rgba(255,179,64,0.3)'],
-    crit: ['var(--color-crit)', 'rgba(255,77,106,0.3)'],
-    fade: ['var(--color-fade)', 'rgba(255,107,90,0.3)'],
-  }[tone];
-
-  return (
-    <span
-      className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
-      style={{ color: color[0], borderColor: color[1] }}
-    >
-      {label}
-    </span>
   );
 }

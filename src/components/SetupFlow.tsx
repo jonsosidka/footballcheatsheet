@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { lookupUser, importLeague, removeLeague, type FoundLeague, type LookupResult } from '@/app/setup/actions';
-import { PositionTag } from '@/components/primitives';
+import { PositionTag, Tag } from '@/components/primitives';
 
 /**
  * Sleeper username -> pick leagues -> import.
@@ -61,9 +61,9 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
   return (
     <div className="space-y-6">
       {/* --- username --- */}
-      <div className="bg-ink-card border border-rule p-4 sm:p-5">
-        <label htmlFor="sleeper-username" className="eyebrow block mb-2">
-          Sleeper username
+      <div className="border border-text p-4 sm:p-5">
+        <label htmlFor="sleeper-username" className="kicker block mb-3">
+          [01] Sleeper username
         </label>
         <div className="flex flex-wrap gap-2">
           <input
@@ -73,24 +73,24 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
             onKeyDown={(e) => {
               if (e.key === 'Enter') search();
             }}
-            placeholder="your sleeper handle"
+            placeholder="YOUR SLEEPER HANDLE"
             spellCheck={false}
             autoComplete="off"
             autoCapitalize="none"
             autoCorrect="off"
             enterKeyHint="search"
-            className="num flex-1 min-w-0 sm:min-w-[220px] bg-ink border border-rule px-3 py-2 min-h-[44px] md:min-h-0 text-[16px] md:text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-signal/50"
+            className="field flex-1 min-w-0 sm:min-w-[220px] !text-[16px] md:!text-[13px] min-h-[44px]"
           />
           <button
             type="button"
             onClick={search}
             disabled={pending || !username.trim()}
-            className="press px-4 py-2 min-h-[44px] md:min-h-0 border border-signal/40 bg-signal/10 text-signal text-[12px] transition-colors hover:bg-signal/20 disabled:opacity-40 disabled:cursor-wait"
+            className="btn btn-primary press min-h-[44px] disabled:cursor-wait"
           >
-            {pending && !importing ? 'Searching…' : 'Find leagues'}
+            {pending && !importing ? 'Searching…' : 'Find leagues →'}
           </button>
         </div>
-        <p className="mt-2 text-[11px] text-text-faint leading-relaxed">
+        <p className="mt-3 text-[13px] text-text-faint leading-relaxed">
           Sleeper&apos;s API is public and read-only — no password, and nothing on your account can be changed from
           here.
         </p>
@@ -98,12 +98,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
 
       {notice ? (
         <div
-          className="border px-4 py-2.5 text-[12px]"
-          style={{
-            borderColor: notice.ok ? 'rgba(201,242,77,0.3)' : 'rgba(255,107,90,0.3)',
-            background: notice.ok ? 'rgba(201,242,77,0.06)' : 'rgba(255,107,90,0.06)',
-            color: notice.ok ? 'var(--color-signal)' : 'var(--color-fade)',
-          }}
+          className={`border px-4 py-3 text-[14px] ${notice.ok ? 'border-accent bg-accent text-on-accent' : 'border-fade text-fade'}`}
           role="status"
         >
           {notice.text}
@@ -114,39 +109,23 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
       {result?.ok && result.leagues ? (
         <div>
           <div className="flex items-baseline gap-3 mb-3">
-            <h2 className="eyebrow">
-              {result.displayName} · {result.leagues.length} league{result.leagues.length === 1 ? '' : 's'}
+            <h2 className="kicker">
+              [02] {result.displayName} · {result.leagues.length} league{result.leagues.length === 1 ? '' : 's'}
             </h2>
             <span className="eyebrow text-text-faint">seasons {result.seasons?.join(', ')}</span>
           </div>
 
           <ul className="space-y-2">
             {result.leagues.map((league) => (
-              <li key={`${league.leagueId}`} className="bg-ink-card border border-rule p-4">
+              <li key={`${league.leagueId}`} className="border border-rule p-4">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className="text-[14px]">{league.name}</span>
-                      <span
-                        className="num text-[9px] px-1.5 py-0.5 border tracking-wider"
-                        style={{
-                          color: league.isDynasty ? 'var(--color-signal)' : 'var(--color-text-faint)',
-                          borderColor: 'var(--color-rule-bright)',
-                        }}
-                      >
-                        {league.isDynasty ? 'DYNASTY' : 'REDRAFT'}
-                      </span>
-                      {league.isSuperflex ? (
-                        <span className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-warn tracking-wider">
-                          SUPERFLEX
-                        </span>
-                      ) : null}
-                      <span className="num text-[10px] text-text-faint">{league.season}</span>
-                      {league.status !== 'in_season' ? (
-                        <span className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-text-faint tracking-wider">
-                          {league.status.replace(/_/g, ' ').toUpperCase()}
-                        </span>
-                      ) : null}
+                      <span className="wide uppercase text-[17px]">{league.name}</span>
+                      <Tag tone={league.isDynasty ? 'solid' : 'outline'}>{league.isDynasty ? 'Dynasty' : 'Redraft'}</Tag>
+                      {league.isSuperflex ? <Tag tone="outline">Superflex</Tag> : null}
+                      <span className="num text-[11px] text-text-faint">{league.season}</span>
+                      {league.status !== 'in_season' ? <Tag tone="muted">{league.status.replace(/_/g, ' ')}</Tag> : null}
                     </div>
 
                     <div className="flex flex-wrap gap-1 mb-2">
@@ -155,7 +134,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
                       ))}
                     </div>
 
-                    <div className="num text-[10.5px] text-text-faint">
+                    <div className="num text-[11px] text-text-faint uppercase">
                       {league.totalRosters} teams ·{' '}
                       {league.ppr === 1 ? 'full PPR' : league.ppr === 0.5 ? 'half PPR' : `${league.ppr}/rec`} ·{' '}
                       {league.scoringKeys} scoring keys
@@ -163,7 +142,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
                       {league.reserveSlots > 0 ? ` · IR ${league.reserveSlots}` : ''}
                     </div>
 
-                    <div className="num text-[10.5px] mt-1" style={{ color: league.myRosterId === null ? 'var(--color-fade)' : 'var(--color-text-faint)' }}>
+                    <div className="num text-[11px] mt-1 uppercase" style={{ color: league.myRosterId === null ? 'var(--color-fade)' : 'var(--color-text-faint)' }}>
                       {league.myRosterId === null
                         ? 'could not find your roster in this league'
                         : `your roster #${league.myRosterId} · ${league.playerCount} players`}
@@ -173,14 +152,12 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
                   <div className="shrink-0">
                     {league.alreadyTracked ? (
                       <div className="flex items-center gap-2">
-                        <span className="num text-[10px] px-2 py-1 border border-signal/30 bg-signal/10 text-signal tracking-wider">
-                          TRACKED
-                        </span>
+                        <Tag tone="accent">Tracked</Tag>
                         <button
                           type="button"
                           onClick={() => doRemove(league.leagueId)}
                           disabled={pending}
-                          className="press px-2.5 py-1.5 min-h-[44px] md:min-h-0 border border-rule text-[11px] text-text-faint transition-colors hover:border-fade/40 hover:text-fade disabled:opacity-40"
+                          className="btn btn-ghost press"
                         >
                           {importing === league.leagueId ? '…' : 'Remove'}
                         </button>
@@ -190,7 +167,7 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
                         type="button"
                         onClick={() => doImport(league)}
                         disabled={pending || league.myRosterId === null}
-                        className="press px-4 py-2 min-h-[44px] md:min-h-0 border border-signal/40 bg-signal/10 text-signal text-[12px] transition-colors hover:bg-signal/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="btn btn-primary press"
                         title={league.myRosterId === null ? 'Your roster was not found in this league' : undefined}
                       >
                         {importing === league.leagueId ? 'Importing…' : 'Import'}
@@ -202,10 +179,9 @@ export function SetupFlow({ initialUsername }: { initialUsername: string }) {
             ))}
           </ul>
 
-          <p className="mt-3 text-[11px] text-text-faint leading-relaxed">
-            Importing pulls rosters, projections, betting lines and dynasty values. The first import also downloads
-            Sleeper&apos;s full player list (~14MB) and the season schedule, so it takes a moment; later ones are
-            fast.
+          <p className="mt-3 text-[13px] text-text-faint leading-relaxed">
+            Importing pulls rosters, projections, betting lines and dynasty values. The first one takes a moment while
+            the full player list downloads; after that it&apos;s quick.
           </p>
         </div>
       ) : null}

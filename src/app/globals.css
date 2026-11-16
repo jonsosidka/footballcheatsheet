@@ -1,42 +1,107 @@
 @import 'tailwindcss';
 
 /*
- * "Terminal Sharp" — the visual thesis is that this is an edge-hunting tool,
- * not a scoreboard. Near-black ground, tight rules, monospaced numerics so
- * columns of points align optically, and one electric accent reserved almost
- * entirely for market movement. Editorial serif against terminal mono.
+ * "Supply Co." — the app dressed as a retro-futurist streetwear label. Each
+ * week is a drop: one loud headline that is the advice itself, a chrome
+ * figure, a spec-sheet table, and acid lime reserved for the things you act
+ * on or own. Everything else is ink and paper, square corners, hairline
+ * rules, and mono for labels and numbers.
+ *
+ * Two themes share one set of names. Dark is ink on black; light is ink on
+ * paper. The lime is a *fill* in both (`accent`, always with black text on
+ * it); `signal` is lime used as *text* or a stroke, which has to darken to an
+ * olive on paper or it vanishes.
  */
 
 @theme {
-  --color-ink: #08090b;
-  --color-ink-raised: #0e1013;
-  --color-ink-card: #121418;
-  --color-ink-hover: #171a1f;
+  --color-ink: #0b0b0c;
+  --color-ink-hover: #18181a;
 
-  --color-rule: #1e2228;
-  --color-rule-bright: #2b3038;
+  --color-rule: #2c2c2e;
+  --color-rule-bright: #48484c;
 
-  --color-text: #e8eaed;
-  --color-text-dim: #9aa1ab;
-  --color-text-faint: #5f6772;
+  --color-text: #f2f0ea;
+  --color-text-dim: #d6d4ce;
+  --color-text-faint: #a3a3a3;
 
-  /* Electric lime: market-up, and the primary accent. Used sparingly. */
-  --color-signal: #c9f24d;
-  --color-signal-dim: #7f9a2e;
-  /* Warm coral: market-down. */
-  --color-fade: #ff6b5a;
-  --color-fade-dim: #a8433a;
+  --color-accent: #c8ff00;
+  --color-on-accent: #0b0b0c;
+
+  --color-signal: #c8ff00;
+  --color-signal-dim: #a6d400;
+  --color-fade: #ff6a3d;
 
   --color-warn: #ffb340;
-  --color-crit: #ff4d6a;
+  --color-crit: #ff5252;
 
-  --font-display: var(--font-instrument), Georgia, serif;
-  --font-body: var(--font-archivo), sans-serif;
+  --font-display: var(--font-archivo), 'Arial Black', sans-serif;
+  --font-body: var(--font-archivo), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
-:root {
-  color-scheme: dark;
+/* Dark is the default; light is ink on paper. All in one layer so the
+ * theme selectors decide, not source order against unlayered rules. */
+@layer base {
+  :root {
+    color-scheme: dark;
+    --chrome: linear-gradient(180deg, #ffffff 0%, #b9bcc2 38%, #55585e 50%, #e6e8eb 64%, #8c9096 100%);
+    --holo: conic-gradient(from 20deg, #c8ff00, #00e0ff, #b98cff, #ff8ad8, #ffe27a, #c8ff00);
+  }
+
+  :root[data-theme='light'],
+  [data-theme='light'] {
+    color-scheme: light;
+    --color-ink: #f2f0ea;
+    --color-ink-hover: #e4e0d5;
+    --color-rule: #d3cfc4;
+    --color-rule-bright: #a9a496;
+    --color-text: #0b0b0c;
+    --color-text-dim: #2e2d2a;
+    --color-text-faint: #5c5a55;
+    --color-signal: #3f5c00;
+    --color-signal-dim: #557a00;
+    --color-fade: #c2410c;
+    --color-warn: #9a5200;
+    --color-crit: #c62828;
+    --chrome: linear-gradient(180deg, #5a5d63 0%, #1d1e21 40%, #8d9096 52%, #2a2b2f 66%, #4c4f55 100%);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) {
+      color-scheme: light;
+      --color-ink: #f2f0ea;
+      --color-ink-hover: #e4e0d5;
+      --color-rule: #d3cfc4;
+      --color-rule-bright: #a9a496;
+      --color-text: #0b0b0c;
+      --color-text-dim: #2e2d2a;
+      --color-text-faint: #5c5a55;
+      --color-signal: #3f5c00;
+      --color-signal-dim: #557a00;
+      --color-fade: #c2410c;
+      --color-warn: #9a5200;
+      --color-crit: #c62828;
+      --chrome: linear-gradient(180deg, #5a5d63 0%, #1d1e21 40%, #8d9096 52%, #2a2b2f 66%, #4c4f55 100%);
+    }
+  }
+
+  /* A block forced dark inside a light page — the kit's side-by-side specimens. */
+  [data-theme='dark'] {
+    color-scheme: dark;
+    --color-ink: #0b0b0c;
+    --color-ink-hover: #18181a;
+    --color-rule: #2c2c2e;
+    --color-rule-bright: #48484c;
+    --color-text: #f2f0ea;
+    --color-text-dim: #d6d4ce;
+    --color-text-faint: #a3a3a3;
+    --color-signal: #c8ff00;
+    --color-signal-dim: #a6d400;
+    --color-fade: #ff6a3d;
+    --color-warn: #ffb340;
+    --color-crit: #ff5252;
+    --chrome: linear-gradient(180deg, #ffffff 0%, #b9bcc2 38%, #55585e 50%, #e6e8eb 64%, #8c9096 100%);
+  }
 }
 
 html,
@@ -47,30 +112,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/*
- * Atmosphere: a faint vertical gradient plus fine grain so large dark
- * surfaces don't read as flat black.
- */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201, 242, 77, 0.045), transparent 70%),
-    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(255, 107, 90, 0.025), transparent 70%);
-}
-
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
+/* ------------------------------------------------------------------------
+ * Type
+ * --------------------------------------------------------------------- */
 
 /* Tabular numerals everywhere numbers are compared down a column. */
 .num {
@@ -79,28 +123,167 @@ body::after {
   font-feature-settings: 'tnum' 1;
 }
 
+/* Mono label: section heads, meta, field names. */
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.18em;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-text-faint);
 }
 
-.rule-top {
-  border-top: 1px solid var(--color-rule);
+/* Bracketed section head: "[01] THE MOVES". */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text);
 }
 
-/* Hairline grid used on panel headers. */
-.hatch {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    var(--color-rule) 0px,
-    var(--color-rule) 1px,
-    transparent 1px,
-    transparent 6px
-  );
+/* The headline face: Archivo at full width and weight. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-stretch: 125%;
+  text-transform: uppercase;
+  letter-spacing: -0.04em;
+  line-height: 0.88;
 }
+
+/* Wide-but-not-shouting: player names, team names, row titles. */
+.wide {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-stretch: 112%;
+}
+
+/* A number set in the headline face. */
+.figure {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-stretch: 125%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Outline lettering — the second line of every headline. */
+.outline-text {
+  color: transparent;
+  -webkit-text-stroke: 2px var(--color-signal);
+}
+
+/* Liquid-metal fill for the one figure a page is about. */
+.chrome-text {
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ------------------------------------------------------------------------
+ * Buttons — square, mono, uppercase. Primary is the lime fill.
+ * --------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.625rem 0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn:focus-visible,
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border-color: var(--color-accent);
+}
+.btn-primary:not(:disabled):hover {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-ink);
+}
+.btn-solid {
+  background: var(--color-text);
+  color: var(--color-ink);
+  border-color: var(--color-text);
+}
+.btn-solid:not(:disabled):hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+.btn-outline {
+  background: transparent;
+  color: var(--color-text);
+  border-color: var(--color-text);
+}
+.btn-outline:not(:disabled):hover {
+  background: var(--color-text);
+  color: var(--color-ink);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-faint);
+  padding-inline: 0.5rem;
+}
+.btn-ghost:not(:disabled):hover {
+  color: var(--color-text);
+}
+@media (max-width: 767px) {
+  .btn {
+    min-height: 2.75rem;
+  }
+}
+
+/* Form fields share the square, hairline look. */
+.field {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  background: var(--color-ink);
+  color: var(--color-text);
+  border: 1px solid var(--color-text);
+  border-radius: 0;
+  padding: 0.625rem 0.75rem;
+  min-height: 2.5rem;
+}
+.field::placeholder {
+  color: var(--color-text-faint);
+}
+.field:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------------
+ * Motion
+ * --------------------------------------------------------------------- */
 
 @keyframes rise {
   from {
@@ -155,15 +338,15 @@ body::after {
 }
 
 ::selection {
-  background: var(--color-signal);
-  color: var(--color-ink);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
-/* Scrollbars that don't break the dark surface. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-rule-bright) transparent;
 }
+
 
 /* ------------------------------------------------------------------------
  * Phone chrome.
@@ -363,4 +546,12 @@ summary {
     width: 100%;
     opacity: 0.5;
   }
+}
+
+/* The page column every route shares: 1240px of content, 16px gutters. */
+.shell {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: 1rem;
 }

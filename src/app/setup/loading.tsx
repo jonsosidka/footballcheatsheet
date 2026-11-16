@@ -3,16 +3,17 @@ import { PageSkeleton, PanelSkeleton } from '@/components/PageSkeleton';
 export default function Loading() {
   return (
     <PageSkeleton
-      eyebrow="Setup"
+      kicker="[ Setup ] — Sleeper import"
       title={
         <>
-          Import <em className="text-signal not-italic">Leagues</em>
+          Bring
+          <br />
+          <span className="outline-text">your league.</span>
         </>
       }
       active="/setup"
-      width="max-w-[900px]"
     >
-      <PanelSkeleton rows={4} />
+      <PanelSkeleton rows={4} className="max-w-[900px]" />
     </PageSkeleton>
   );
 }

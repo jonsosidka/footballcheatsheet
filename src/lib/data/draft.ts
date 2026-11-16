@@ -249,12 +249,6 @@ export async function getDraftView(options: DraftViewOptions = {}): Promise<Draf
   const myFollowingPickNo = upcoming[1] ?? null;
   const isMyPick = myNextPickNo === currentPickNo && madePicks.length < totalPicks;
 
-  if (type === 'auction') {
-    warnings.push(
-      'Auction draft: nomination order and budgets are not modelled, so values are roster-marginal points rather than prices.',
-    );
-  }
-
   // --- rosters so far ------------------------------------------------------
   const bySlot = new Map<number, DraftPlayer[]>();
   for (const pick of madePicks) {

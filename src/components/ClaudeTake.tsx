@@ -83,8 +83,7 @@ export function ClaudeTake({
     }
   };
 
-  const button =
-    'press min-h-[36px] md:min-h-0 px-2.5 py-1.5 border text-[11px] tracking-wide disabled:opacity-40 disabled:cursor-not-allowed';
+  const button = 'btn press !min-h-[2.25rem]';
 
   return (
     <div className="mt-3">
@@ -94,7 +93,7 @@ export function ClaudeTake({
           onClick={() => ask('analysis')}
           disabled={loading}
           aria-pressed={kind === 'analysis'}
-          className={`${button} ${kind === 'analysis' ? 'border-signal/50 text-signal bg-signal/5' : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'}`}
+          className={`${button} ${kind === 'analysis' ? 'btn-primary' : 'btn-outline'}`}
           title="Claude Opus reads the engine's numbers and both rosters"
         >
           {loading && kind === 'analysis' ? 'Claude is thinking…' : 'Ask Claude'}
@@ -104,7 +103,7 @@ export function ClaudeTake({
           onClick={() => ask('pitch')}
           disabled={loading}
           aria-pressed={kind === 'pitch'}
-          className={`${button} ${kind === 'pitch' ? 'border-signal/50 text-signal bg-signal/5' : 'border-rule text-text-dim hover:border-rule-bright hover:text-text'}`}
+          className={`${button} ${kind === 'pitch' ? 'btn-primary' : 'btn-outline'}`}
           title="A short message to send this manager"
         >
           {loading && kind === 'pitch' ? 'Writing…' : 'Draft a pitch'}
@@ -112,20 +111,20 @@ export function ClaudeTake({
       </div>
 
       {error ? (
-        <p className="num text-[10.5px] text-fade mt-2" role="status">
+        <p className="num text-[12px] text-fade mt-2" role="status">
           {error}
         </p>
       ) : null}
 
       {kind && (text || loading) && !error ? (
-        <div className="mt-2 border-l-2 border-signal/40 pl-3 py-1" aria-live="polite">
-          <div className="eyebrow mb-1 text-text-faint">
+        <div className="mt-3 border border-rule p-3" aria-live="polite">
+          <div className="eyebrow mb-1.5">
             {kind === 'analysis' ? "claude's take" : 'message to send'}
           </div>
           {text ? (
-            <p className="text-[12px] text-text-dim leading-relaxed whitespace-pre-wrap">{text.trim()}</p>
+            <p className="text-[14px] text-text-dim leading-relaxed whitespace-pre-wrap">{text.trim()}</p>
           ) : (
-            <p className="text-[11.5px] text-text-faint">
+            <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-text-faint pulse">
               {kind === 'analysis' ? 'Reading both rosters…' : 'Drafting…'}
             </p>
           )}
@@ -133,7 +132,7 @@ export function ClaudeTake({
             <button
               type="button"
               onClick={copy}
-              className="press mt-2 px-2 py-1 border border-rule text-[10.5px] text-text-faint hover:text-text-dim"
+              className="btn btn-outline press mt-3 !min-h-[2.25rem]"
             >
               {copied ? 'Copied' : 'Copy message'}
             </button>
