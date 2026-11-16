@@ -37,7 +37,12 @@ export interface TradeView {
   myRosterId: number;
   myPosture: string;
   myTrajectory: string;
-  ideas: TradeIdea[];
+  /**
+   * The league-wide sweep is the slow part of this page (seconds on Netlify),
+   * so it resolves after the rest: the page streams the builder first and
+   * the ideas fill in under a Suspense boundary.
+   */
+  ideas: Promise<TradeIdea[]>;
   partners: Array<{ rosterId: number; name: string; posture: string; strength: number; isMe: boolean }>;
   /** Every roster in the league, for the custom trade builder. */
   rosters: BuilderTeam[];
@@ -354,12 +359,17 @@ export async function getTradeView(leagueId?: string, week = 1): Promise<TradeVi
   if (!ctx) return null;
   const { league, me, rivals, teams, strengths } = ctx;
 
-  const ideas = findTrades({
-    me,
-    rivals,
-    isDynasty: league.isDynasty,
-    limit: 15,
-  });
+  // findTrades is synchronous: started inline it would hold the render until it
+  // finished. Waiting a few ticks lets React flush the shell (header, builder)
+  // to the browser before the CPU is busy with the sweep.
+  const ideas = new Promise<void>((resolve) => setTimeout(resolve, 25)).then(() =>
+    findTrades({
+      me,
+      rivals,
+      isDynasty: league.isDynasty,
+      limit: 15,
+    }),
+  );
 
   return {
     leagueId: league.id,

@@ -13,8 +13,7 @@ export default async function WaiversPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const { week, liveWeek } = await resolveWeek(params.week);
-  const leagues = await listLeagues();
+  const [{ week, liveWeek }, leagues] = await Promise.all([resolveWeek(params.week), listLeagues()]);
   const view = await getWaiverView(params.league, week);
 
   if (!view) {

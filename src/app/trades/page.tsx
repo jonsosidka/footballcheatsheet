@@ -1,6 +1,9 @@
+import { Suspense } from 'react';
 import { getTradeView } from '@/lib/data/trades';
+import type { TradeIdea } from '@/lib/engine/trades';
 import { listLeagues } from '@/lib/data/dashboard';
 import { Panel } from '@/components/primitives';
+import { PanelSkeleton } from '@/components/PageSkeleton';
 import { AppHeader } from '@/components/AppHeader';
 import { TradeBuilder } from '@/components/TradeBuilder';
 import { AiGm } from '@/components/AiGm';
@@ -15,8 +18,7 @@ export default async function TradesPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const { week, liveWeek } = await resolveWeek(params.week);
-  const leagues = await listLeagues();
+  const [{ week, liveWeek }, leagues] = await Promise.all([resolveWeek(params.week), listLeagues()]);
   const view = await getTradeView(params.league, week);
 
   if (!view) {
@@ -73,50 +75,9 @@ export default async function TradesPage({
         </p>
 
         <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-3 sm:gap-4 items-start">
-          <Panel title="Mutually beneficial trades" accent meta={`${view.ideas.length} found`}>
-            {view.ideas.length === 0 ? (
-              <p className="px-4 py-8 text-[12px] text-text-faint">
-                No trade improves both rosters right now. That usually means the league is postured similarly — check
-                back once records separate contenders from sellers.
-              </p>
-            ) : (
-              <ul>
-                {view.ideas.map((idea, i) => (
-                  <li
-                    key={i}
-                    className="px-4 py-3.5 border-b border-rule/60 last:border-0 rise"
-                    style={{ animationDelay: `${i * 30}ms` }}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="eyebrow">with</span>
-                      <span className="text-[12.5px] text-text-dim">{idea.partnerName}</span>
-                      <span className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-text-faint ml-auto">
-                        {idea.valueRatio.toFixed(2)}× value
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center mb-2">
-                      <PlayerList label="you send" players={idea.mine.gives} tone="fade" />
-                      <span className="text-text-faint text-[14px] sm:hidden" aria-hidden="true">
-                        ↓
-                      </span>
-                      <span className="text-text-faint text-[14px] hidden sm:block" aria-hidden="true">
-                        ⇄
-                      </span>
-                      <PlayerList label="you get" players={idea.mine.gets} tone="signal" />
-                    </div>
-
-                    <p className="text-[11.5px] text-text-faint leading-relaxed mb-2">{idea.rationale}</p>
-
-                    <div className="flex flex-wrap gap-x-6 gap-y-1">
-                      <Delta label="you" now={idea.mine.winNowDelta} future={idea.mine.futureDelta} isDynasty={view.isDynasty} />
-                      <Delta label={idea.partnerName} now={idea.theirs.winNowDelta} future={idea.theirs.futureDelta} isDynasty={view.isDynasty} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
+          <Suspense fallback={<PanelSkeleton rows={8} />}>
+            <TradeIdeas ideas={view.ideas} isDynasty={view.isDynasty} />
+          </Suspense>
 
           <Panel title="League postures" meta="strongest first">
             <ul>
@@ -155,5 +116,56 @@ export default async function TradesPage({
         </div>
       </div>
     </main>
+  );
+}
+
+/** The league-wide sweep, streamed in after the rest of the page. */
+async function TradeIdeas({ ideas: pending, isDynasty }: { ideas: Promise<TradeIdea[]>; isDynasty: boolean }) {
+  const ideas = await pending;
+  return (
+    <Panel title="Mutually beneficial trades" accent meta={`${ideas.length} found`}>
+      {ideas.length === 0 ? (
+        <p className="px-4 py-8 text-[12px] text-text-faint">
+          No trade improves both rosters right now. That usually means the league is postured similarly — check
+          back once records separate contenders from sellers.
+        </p>
+      ) : (
+        <ul>
+          {ideas.map((idea, i) => (
+            <li
+              key={i}
+              className="px-4 py-3.5 border-b border-rule/60 last:border-0 rise"
+              style={{ animationDelay: `${i * 30}ms` }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="eyebrow">with</span>
+                <span className="text-[12.5px] text-text-dim">{idea.partnerName}</span>
+                <span className="num text-[9px] px-1.5 py-0.5 border border-rule-bright text-text-faint ml-auto">
+                  {idea.valueRatio.toFixed(2)}× value
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center mb-2">
+                <PlayerList label="you send" players={idea.mine.gives} tone="fade" />
+                <span className="text-text-faint text-[14px] sm:hidden" aria-hidden="true">
+                  ↓
+                </span>
+                <span className="text-text-faint text-[14px] hidden sm:block" aria-hidden="true">
+                  ⇄
+                </span>
+                <PlayerList label="you get" players={idea.mine.gets} tone="signal" />
+              </div>
+
+              <p className="text-[11.5px] text-text-faint leading-relaxed mb-2">{idea.rationale}</p>
+
+              <div className="flex flex-wrap gap-x-6 gap-y-1">
+                <Delta label="you" now={idea.mine.winNowDelta} future={idea.mine.futureDelta} isDynasty={isDynasty} />
+                <Delta label={idea.partnerName} now={idea.theirs.winNowDelta} future={idea.theirs.futureDelta} isDynasty={isDynasty} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }

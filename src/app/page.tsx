@@ -13,8 +13,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ league?: string; week?: string }>;
 }) {
   const params = await searchParams;
-  const { week, liveWeek } = await resolveWeek(params.week);
-  const leagues = await listLeagues();
+  const [{ week, liveWeek }, leagues] = await Promise.all([resolveWeek(params.week), listLeagues()]);
   const data = await getDashboard(params.league, week);
 
   if (!data) return <EmptyState />;
