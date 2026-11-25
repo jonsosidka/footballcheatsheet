@@ -7,11 +7,13 @@ import {
   gameOdds,
   marketValues,
   myTeams,
+  matchups,
   syncState,
   leagueUsers,
   type ScoringSettings,
 } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { syncWeekLineups } from '@/lib/sync/league';
 import { projectPlayers, explainLayers, type TeamOdds, type ProjectedPlayer } from '@/lib/engine/pipeline';
 import { compareToCurrentLineup, optimizeLineup, type LineupPlayer } from '@/lib/engine/lineup';
 import { computeOccupancy, findSlotMoves, type RosterPlayerInfo, type SlotMove } from '@/lib/engine/roster';
@@ -352,6 +354,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
 
   const taxiSet = new Set(mine.taxi ?? []);
   const reserveSet = new Set(mine.reserve ?? []);
+  const myStarters = await startersForWeek(leagueRow.id, week, mine.rosterId, mine.starters ?? []);
 
   const lineupPlayers: LineupPlayer[] = (mine.players ?? [])
     .filter((id) => !taxiSet.has(id) && !reserveSet.has(id))
@@ -373,7 +376,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
   const comparison = compareToCurrentLineup(
     lineupPlayers,
     leagueRow.rosterPositions,
-    mine.starters ?? [],
+    myStarters,
   );
 
   const lineup: DashboardSlot[] = comparison.optimal.assignments.map((a) => ({
@@ -393,7 +396,7 @@ export async function getDashboard(leagueId?: string, week = 1): Promise<Dashboa
    * starters array is positionally aligned with the league's starting slots
    * and uses "0" for an empty one.
    */
-  const currentStarters = (mine.starters ?? [])
+  const currentStarters = myStarters
     .filter((id) => id && id !== '0')
     .map(toDashboardPlayer);
 
@@ -541,3 +544,43 @@ function round2(n: number): number {
 }
 
 export type { ProjectedPlayer };
+
+/** How long a saved weekly lineup is trusted before Sleeper is asked again. */
+const LINEUP_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * The lineup the manager has set for `week`.
+ *
+ * Read from that week's matchup rather than the roster, whose starters are
+ * whatever week Sleeper thinks it is. Refreshed from Sleeper when the saved
+ * copy is a few minutes old, so a lineup set in Sleeper shows up on the next
+ * page load without waiting for a scheduled sync. Falls back to the roster's
+ * starters when Sleeper has no lineup for that week or can't be reached.
+ */
+async function startersForWeek(
+  leagueId: string,
+  week: number,
+  rosterId: number,
+  rosterStarters: string[],
+): Promise<string[]> {
+  const read = async () =>
+    (
+      await db
+        .select({ starters: matchups.starters, syncedAt: matchups.syncedAt })
+        .from(matchups)
+        .where(and(eq(matchups.leagueId, leagueId), eq(matchups.week, week), eq(matchups.rosterId, rosterId)))
+    )[0];
+
+  let saved = await read();
+  if (!saved || Date.now() - saved.syncedAt.getTime() > LINEUP_TTL_MS) {
+    try {
+      await syncWeekLineups(leagueId, week);
+      saved = await read();
+    } catch {
+      // Sleeper unreachable — use what we have.
+    }
+  }
+
+  const starters = saved?.starters ?? [];
+  return starters.some((id) => id && id !== '0') ? starters : rosterStarters;
+}

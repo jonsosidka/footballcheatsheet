@@ -3,9 +3,10 @@ import { alerts, projSnapshots, leagues, myTeams } from '@/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getState, requiredProjectionPositions } from '@/lib/sources/sleeper';
 import { syncWeeklyProjections, syncGameOdds, syncPlayers, syncSeasonProjections, syncMarketValues, syncByeWeeks, markSynced } from './data';
-import { syncLeagueMembers } from './league';
+import { syncLeagueMembers, syncWeekLineups } from './league';
 import { getDashboard, listLeagues } from '@/lib/data/dashboard';
 import { recordCurrentWeek } from '@/lib/data/week';
+import { liveWeekFromState } from '@/lib/engine/week';
 import { getWaiverView } from '@/lib/data/waivers';
 import { buildAlerts, type AlertPlayer } from '@/lib/engine/alerts';
 import { shapeFromLeague } from '@/lib/sources/fantasycalc';
@@ -31,8 +32,8 @@ export async function runHourly(): Promise<RefreshResult> {
   const started = Date.now();
   const state = await getState();
   const season = state.league_season;
-  const week = Math.max(1, state.display_week ?? state.week ?? 1);
-  await recordCurrentWeek(week);
+  const week = liveWeekFromState(state);
+  await recordCurrentWeek(week, state);
 
   const tracked = await listLeagues();
   const positions = requiredProjectionPositions(
@@ -49,6 +50,7 @@ export async function runHourly(): Promise<RefreshResult> {
   // Rosters change on waivers and trades; cheap enough to refresh hourly.
   for (const league of tracked) {
     await syncLeagueMembers(league.id);
+    await syncWeekLineups(league.id, week).catch(() => 0);
   }
 
   const alertCounts: Record<string, number> = {};
@@ -111,8 +113,8 @@ export async function runGameday(): Promise<RefreshResult> {
   const started = Date.now();
   const state = await getState();
   const season = state.league_season;
-  const week = Math.max(1, state.display_week ?? state.week ?? 1);
-  await recordCurrentWeek(week);
+  const week = liveWeekFromState(state);
+  await recordCurrentWeek(week, state);
 
   const positions = requiredProjectionPositions(
     (await db.select({ rp: leagues.rosterPositions }).from(leagues)).map((r) => r.rp),
@@ -135,6 +137,7 @@ export async function runGameday(): Promise<RefreshResult> {
   const alertCounts: Record<string, number> = {};
   for (const league of tracked) {
     await syncLeagueMembers(league.id);
+    await syncWeekLineups(league.id, week).catch(() => 0);
     alertCounts[league.name] = await refreshAlerts(league.id, week);
   }
 
@@ -275,8 +278,8 @@ export async function refreshLeagueNow(leagueId: string, week?: number): Promise
   const started = Date.now();
   const state = await getState();
   const season = state.league_season;
-  const targetWeek = week ?? Math.max(1, state.display_week ?? state.week ?? 1);
-  await recordCurrentWeek(Math.max(1, state.display_week ?? state.week ?? 1));
+  const targetWeek = week ?? liveWeekFromState(state);
+  await recordCurrentWeek(liveWeekFromState(state), state);
 
   const [leagueRow] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
   if (!leagueRow) throw new Error(`League ${leagueId} is not tracked`);
@@ -289,6 +292,7 @@ export async function refreshLeagueNow(leagueId: string, week?: number): Promise
   ]);
 
   await syncLeagueMembers(leagueId);
+  await syncWeekLineups(leagueId, targetWeek).catch(() => 0);
   const alertCount = await refreshAlerts(leagueId, targetWeek);
 
   await markSynced(`manual:${leagueId}`, `week ${targetWeek}`);

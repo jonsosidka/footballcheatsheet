@@ -24,6 +24,7 @@ import {
 } from '@/lib/sync/data';
 import { shapeFromLeague } from '@/lib/sources/fantasycalc';
 import { recordCurrentWeek } from '@/lib/data/week';
+import { liveWeekFromState } from '@/lib/engine/week';
 
 export interface FoundLeague {
   leagueId: string;
@@ -136,8 +137,8 @@ export async function importLeague(
   try {
     const state = await getState();
     const season = state.league_season;
-    const week = Math.max(1, state.display_week ?? state.week ?? 1);
-    await recordCurrentWeek(week);
+    const week = liveWeekFromState(state);
+    await recordCurrentWeek(week, state);
 
     const league = await syncLeague(leagueId);
     await setMyTeam(leagueId, rosterId, sleeperUserId);

@@ -1,10 +1,11 @@
 import { db } from '@/db';
-import { leagues, leagueUsers, rosters, myTeams, draftPicks } from '@/db/schema';
+import { leagues, leagueUsers, rosters, myTeams, draftPicks, matchups } from '@/db/schema';
 import { eq, and, or, notInArray } from 'drizzle-orm';
 import {
   getLeague,
   getLeagueRosters,
   getLeagueUsers,
+  getMatchups,
   getTradedPicks,
   isDynastyLeague,
   type SleeperLeague,
@@ -232,4 +233,42 @@ export async function getTrackedLeagues() {
 import { sql } from 'drizzle-orm';
 function sqlExcluded(column: string) {
   return sql.raw(`excluded.${column}`);
+}
+
+/**
+ * Every team's lineup for one week, from Sleeper's matchups.
+ *
+ * The roster endpoint's `starters` is the lineup for the week Sleeper thinks
+ * it is, and Sleeper's week lags into midweek. A lineup set on Tuesday for
+ * the coming game lives only on that week's matchup, so reading starters
+ * from the roster showed last week's lineup no matter which week was picked.
+ */
+export async function syncWeekLineups(leagueId: string, week: number): Promise<number> {
+  const weekMatchups = await getMatchups(leagueId, week);
+  const now = new Date();
+  for (const m of weekMatchups) {
+    await db
+      .insert(matchups)
+      .values({
+        leagueId,
+        week,
+        rosterId: m.roster_id,
+        matchupId: m.matchup_id,
+        points: m.points,
+        starters: m.starters ?? [],
+        playersPoints: m.players_points ?? {},
+        syncedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [matchups.leagueId, matchups.week, matchups.rosterId],
+        set: {
+          matchupId: m.matchup_id,
+          points: m.points,
+          starters: m.starters ?? [],
+          playersPoints: m.players_points ?? {},
+          syncedAt: now,
+        },
+      });
+  }
+  return weekMatchups.length;
 }

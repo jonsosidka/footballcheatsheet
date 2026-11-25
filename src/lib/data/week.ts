@@ -1,8 +1,8 @@
 import { db } from '@/db';
 import { syncState } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { getState } from '@/lib/sources/sleeper';
-import { clampWeek, pickWeek } from '@/lib/engine/week';
+import { calendarWeek, clampWeek, liveWeekFromState, pickWeek } from '@/lib/engine/week';
 
 /**
  * What week is it?
@@ -21,11 +21,28 @@ import { clampWeek, pickWeek } from '@/lib/engine/week';
 /** sync_state key holding the current NFL week. */
 export const NFL_WEEK_KEY = 'nfl:week';
 
+/** sync_state key holding the season's opening date, for the calendar check. */
+const SEASON_START_KEY = 'nfl:season_start';
+
 /** Record the live week so page loads can read it without calling Sleeper. */
-export async function recordCurrentWeek(week: number): Promise<void> {
+export async function recordCurrentWeek(
+  week: number,
+  state?: { season_type?: string | null; season_start_date?: string | null },
+): Promise<void> {
   const valid = clampWeek(week);
   if (valid === null) return;
   const now = new Date();
+  // Kept so a page can still apply the calendar when Sleeper is unreachable.
+  const seasonStartDate = state?.season_type === 'regular' ? state.season_start_date : null;
+  if (seasonStartDate) {
+    await db
+      .insert(syncState)
+      .values({ key: SEASON_START_KEY, lastRunAt: now, lastOkAt: now, detail: seasonStartDate })
+      .onConflictDoUpdate({
+        target: syncState.key,
+        set: { lastRunAt: now, lastOkAt: now, detail: seasonStartDate },
+      });
+  }
   await db
     .insert(syncState)
     .values({ key: NFL_WEEK_KEY, lastRunAt: now, lastOkAt: now, detail: String(valid) })
@@ -36,32 +53,42 @@ export async function recordCurrentWeek(week: number): Promise<void> {
 }
 
 /**
+ * How long a saved week is trusted before Sleeper is asked again. The saved
+ * value used to be trusted forever, so a missed sync left the app on last
+ * week with nothing to tell it otherwise.
+ */
+const STORED_WEEK_TTL_MS = 60 * 60 * 1000;
+
+/**
  * The week the app should show by default.
  *
- * Never throws: a page that cannot reach Sleeper and has never synced still
- * renders, on week 1, rather than failing outright.
+ * Order: a saved week less than an hour old; otherwise Sleeper, with the
+ * calendar moving it ahead if Sleeper hasn't rolled over yet; otherwise the
+ * saved week moved ahead by the calendar. Never throws: a page that cannot
+ * reach Sleeper and has never synced still renders, on week 1.
  */
-export async function getCurrentWeek(): Promise<number> {
-  const [row] = await db
-    .select({ detail: syncState.detail })
+export async function getCurrentWeek(now: Date = new Date()): Promise<number> {
+  const rows = await db
+    .select({ key: syncState.key, detail: syncState.detail, lastOkAt: syncState.lastOkAt })
     .from(syncState)
-    .where(eq(syncState.key, NFL_WEEK_KEY));
+    .where(inArray(syncState.key, [NFL_WEEK_KEY, SEASON_START_KEY]));
+  const row = rows.find((r) => r.key === NFL_WEEK_KEY);
+  const seasonStart = rows.find((r) => r.key === SEASON_START_KEY)?.detail ?? null;
 
   const stored = clampWeek(row?.detail ? Number(row.detail) : null);
-  if (stored !== null) return stored;
+  const fresh = row?.lastOkAt && now.getTime() - row.lastOkAt.getTime() < STORED_WEEK_TTL_MS;
+  if (stored !== null && fresh) return stored;
 
   try {
     const state = await getState();
-    const live = clampWeek(state.display_week ?? state.week);
-    if (live !== null) {
-      // Seed the cache so the next render is a pure database read.
-      await recordCurrentWeek(live);
-      return live;
-    }
+    const live = liveWeekFromState(state, now);
+    await recordCurrentWeek(live, state);
+    return live;
   } catch {
-    // Offline or Sleeper down — fall through to the safe default.
+    // Offline or Sleeper down — fall through to what we already know.
   }
 
+  if (stored !== null) return Math.max(stored, calendarWeek(seasonStart, now) ?? stored);
   return 1;
 }
 
