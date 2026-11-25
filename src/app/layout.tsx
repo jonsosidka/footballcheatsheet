@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
-import { Archivo, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { ResumeRefresh } from '@/components/ResumeRefresh';
 import { THEME_COOKIE, parseTheme } from '@/lib/theme';
@@ -10,16 +10,27 @@ import { THEME_COOKIE, parseTheme } from '@/lib/theme';
  * 125% expanded, so the headline face, the player names and the body copy are
  * one family at three widths rather than three fonts.
  */
-const archivo = Archivo({
-  subsets: ['latin'],
-  axes: ['wdth'],
+/*
+ * Both faces are self-hosted (the Latin subsets, as variable fonts) rather
+ * than loaded through next/font/google. Google started serving JetBrains Mono
+ * from a URL with several query parameters, which Turbopack's Google font
+ * loader cannot resolve, and the Netlify build failed on it. Files in the repo
+ * also mean a build never depends on Google answering.
+ */
+const archivo = localFont({
+  src: './fonts/archivo-latin.woff2',
+  weight: '100 900',
+  // The width axis: condensed to 125% expanded.
+  declarations: [{ prop: 'font-stretch', value: '62% 125%' }],
   variable: '--font-archivo',
+  display: 'swap',
 });
 
-const jetbrains = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '700'],
+const jetbrains = localFont({
+  src: './fonts/jetbrains-mono-latin.woff2',
+  weight: '100 800',
   variable: '--font-jetbrains',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
